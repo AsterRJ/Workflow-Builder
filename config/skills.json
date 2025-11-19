@@ -1,0 +1,451 @@
+{
+    "messaging.email_notification": {
+        "type": "n8n-nodes-base.emailSend",
+        "description": "Send a simple email notification to a role or contact.",
+        "category": "messaging",
+        "io": {
+            "inputs": {
+                "recipient_email": {
+                    "type": "contact.email",
+                    "from_field": "target_role",
+                    "param": "toEmail"
+                },
+                "subject": {
+                    "type": "literal",
+                    "value": "Workflow Notification",
+                    "param": "subject"
+                },
+                "body": {
+                    "type": "subtask.description",
+                    "param": "message"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "fromEmail": "noreply@example.com",
+                "options": {}
+            }
+        },
+        "error_handling": {
+            "continueOnFail": true,
+            "retryOnFail": true,
+            "maxTries": 3
+        }
+    },
+    "messaging.email_escalation": {
+        "type": "n8n-nodes-base.emailSend",
+        "description": "Send an escalation email to a manager or higher-level role.",
+        "category": "messaging",
+        "io": {
+            "inputs": {
+                "recipient_email": {
+                    "type": "contact.email",
+                    "from_field": "escalation_role",
+                    "param": "toEmail"
+                },
+                "subject": {
+                    "type": "literal",
+                    "value": "Escalation: Workflow Issue",
+                    "param": "subject"
+                },
+                "body": {
+                    "type": "subtask.description",
+                    "param": "message"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "fromEmail": "alerts@example.com",
+                "options": {}
+            }
+        },
+        "error_handling": {
+            "continueOnFail": false,
+            "retryOnFail": true,
+            "maxTries": 3
+        }
+    },
+    "messaging.chat_notification": {
+        "type": "n8n-nodes-base.httpRequest",
+        "description": "Post a notification message to a chat channel (Slack, Teams, Mattermost) via webhook.",
+        "category": "messaging",
+        "io": {
+            "inputs": {
+                "trigger_url": {
+                    "type": "webhook.by_name",
+                    "from_field": "target_channel",
+                    "param": "url"
+                },
+                "payload": {
+                    "type": "state_var",
+                    "state_key": "chat_message",
+                    "param": "body"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "method": "POST",
+                "jsonParameters": true,
+                "authentication": "none"
+            }
+        },
+        "error_handling": {
+            "continueOnFail": true,
+            "retryOnFail": true,
+            "maxTries": 3
+        }
+    },
+    "etl.check_input_folder": {
+        "type": "n8n-nodes-base.executeCommand",
+        "description": "Check for existence of expected input files in a folder.",
+        "category": "etl",
+        "io": {
+            "inputs": {
+                "folder_path": {
+                    "type": "state_var",
+                    "state_key": "input_folder",
+                    "param": "command"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "command": "ls",
+                "options": {}
+            }
+        },
+        "error_handling": {
+            "continueOnFail": false,
+            "retryOnFail": false,
+            "maxTries": 1
+        }
+    },
+    "etl.validate_files_exist": {
+        "type": "n8n-nodes-base.function",
+        "description": "Validate that all required files are present based on a list.",
+        "category": "etl",
+        "io": {
+            "inputs": {}
+        },
+        "n8n_template": {
+            "parameters": {
+                "functionCode": "// Implement file validation using items[] and a required file list from previous nodes."
+            }
+        },
+        "error_handling": {
+            "continueOnFail": false,
+            "retryOnFail": false,
+            "maxTries": 1
+        }
+    },
+    "etl.basic_cleaning": {
+        "type": "n8n-nodes-base.function",
+        "description": "Apply basic cleaning to tabular data (trim, drop empty rows, convert types).",
+        "category": "etl",
+        "io": {
+            "inputs": {}
+        },
+        "n8n_template": {
+            "parameters": {
+                "functionCode": "// Access items and perform cleaning transformations here."
+            }
+        },
+        "error_handling": {
+            "continueOnFail": true,
+            "retryOnFail": false,
+            "maxTries": 1
+        }
+    },
+    "etl.write_to_db": {
+        "type": "n8n-nodes-base.postgres",
+        "description": "Write a row into a configured PostgreSQL ETL database.",
+        "category": "etl",
+        "io": {
+            "inputs": {
+                "database": {
+                    "type": "database.by_name",
+                    "from_field": "target_system",
+                    "param": "database"
+                },
+                "table": {
+                    "type": "literal",
+                    "value": "daily_extracts",
+                    "param": "table"
+                },
+                "row": {
+                    "type": "state_var",
+                    "state_key": "row_data",
+                    "param": "columns"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "operation": "insert",
+                "schema": "public",
+                "columns": []
+            }
+        },
+        "error_handling": {
+            "continueOnFail": false,
+            "retryOnFail": true,
+            "maxTries": 5
+        }
+    },
+    "etl.read_from_db": {
+        "type": "n8n-nodes-base.postgres",
+        "description": "Read records from a configured PostgreSQL ETL database.",
+        "category": "etl",
+        "io": {
+            "inputs": {
+                "database": {
+                    "type": "database.by_name",
+                    "from_field": "target_system",
+                    "param": "database"
+                },
+                "query": {
+                    "type": "state_var",
+                    "state_key": "sql_query",
+                    "param": "query"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "operation": "executeQuery",
+                "schema": "public"
+            }
+        },
+        "error_handling": {
+            "continueOnFail": true,
+            "retryOnFail": true,
+            "maxTries": 3
+        }
+    },
+    "remote.trigger_webhook": {
+        "type": "n8n-nodes-base.httpRequest",
+        "description": "Trigger a remote system via a named webhook.",
+        "category": "remote",
+        "io": {
+            "inputs": {
+                "trigger_url": {
+                    "type": "webhook.by_name",
+                    "from_field": "target_action",
+                    "param": "url"
+                },
+                "payload": {
+                    "type": "state_var",
+                    "state_key": "trigger_payload",
+                    "param": "body"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "method": "POST",
+                "jsonParameters": true,
+                "authentication": "none"
+            }
+        },
+        "error_handling": {
+            "continueOnFail": false,
+            "retryOnFail": true,
+            "maxTries": 3
+        }
+    },
+    "remote.trigger_robot_task": {
+        "type": "n8n-nodes-base.mqtt",
+        "description": "Trigger a robot or PLC task via a machine topic.",
+        "category": "remote",
+        "io": {
+            "inputs": {
+                "machine_topic": {
+                    "type": "machine.by_name",
+                    "from_field": "machine_name",
+                    "param": "topic"
+                },
+                "payload": {
+                    "type": "state_var",
+                    "state_key": "robot_command",
+                    "param": "message"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "qos": 0,
+                "retain": false
+            }
+        },
+        "error_handling": {
+            "continueOnFail": false,
+            "retryOnFail": true,
+            "maxTries": 3
+        }
+    },
+    "monitoring.publish_metric": {
+        "type": "n8n-nodes-base.mqtt",
+        "description": "Publish a metric value to a monitoring topic.",
+        "category": "monitoring",
+        "io": {
+            "inputs": {
+                "topic": {
+                    "type": "topic.by_name",
+                    "from_field": "topic_name",
+                    "param": "topic"
+                },
+                "payload": {
+                    "type": "state_var",
+                    "state_key": "metric_value",
+                    "param": "message"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "qos": 0,
+                "retain": false
+            }
+        },
+        "error_handling": {
+            "continueOnFail": true,
+            "retryOnFail": true,
+            "maxTries": 3
+        }
+    },
+    "monitoring.log_event": {
+        "type": "n8n-nodes-base.httpRequest",
+        "description": "Send a structured event to a logging or SIEM endpoint.",
+        "category": "monitoring",
+        "io": {
+            "inputs": {
+                "trigger_url": {
+                    "type": "webhook.by_name",
+                    "from_field": "logging_endpoint",
+                    "param": "url"
+                },
+                "payload": {
+                    "type": "state_var",
+                    "state_key": "event_payload",
+                    "param": "body"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "method": "POST",
+                "jsonParameters": true,
+                "authentication": "none"
+            }
+        },
+        "error_handling": {
+            "continueOnFail": true,
+            "retryOnFail": true,
+            "maxTries": 5
+        }
+    },
+    "human.review_step": {
+        "type": "n8n-nodes-base.wait",
+        "description": "Wait for a human review or approval step to complete (modelled as a time-based pause or external signal).",
+        "category": "human",
+        "io": {
+            "inputs": {
+                "wait_duration": {
+                    "type": "literal",
+                    "value": 1,
+                    "param": "amount"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "unit": "hours",
+                "amount": 1
+            }
+        },
+        "error_handling": {
+            "continueOnFail": true,
+            "retryOnFail": false,
+            "maxTries": 1
+        }
+    },
+    "control.wait_for_time": {
+        "type": "n8n-nodes-base.wait",
+        "description": "Pause the workflow for a specified time (for scheduling or rate-limiting).",
+        "category": "control",
+        "io": {
+            "inputs": {
+                "wait_duration": {
+                    "type": "state_var",
+                    "state_key": "wait_hours",
+                    "param": "amount"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "unit": "hours",
+                "amount": 1
+            }
+        },
+        "error_handling": {
+            "continueOnFail": true,
+            "retryOnFail": false,
+            "maxTries": 1
+        }
+    },
+    "control.branch_on_state": {
+        "type": "n8n-nodes-base.if",
+        "description": "Branch based on a state variable or outcome name.",
+        "category": "control",
+        "io": {
+            "inputs": {
+                "state_value": {
+                    "type": "state_var",
+                    "state_key": "state_variable",
+                    "param": "conditions"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "conditions": {
+                    "string": []
+                }
+            }
+        },
+        "error_handling": {
+            "continueOnFail": true,
+            "retryOnFail": false,
+            "maxTries": 1
+        }
+    },
+    "storage.set_state": {
+        "type": "n8n-nodes-base.set",
+        "description": "Set or update workflow state variables.",
+        "category": "storage",
+        "io": {
+            "inputs": {
+                "state_payload": {
+                    "type": "state_var",
+                    "state_key": "state_payload",
+                    "param": "values"
+                }
+            }
+        },
+        "n8n_template": {
+            "parameters": {
+                "keepOnlySet": false,
+                "values": {}
+            }
+        },
+        "error_handling": {
+            "continueOnFail": true,
+            "retryOnFail": false,
+            "maxTries": 1
+        }
+    }
+}

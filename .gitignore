@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.sqlite3
+
+
+.venv/
+venv/
+env/
+
+.vscode/
+.idea/
+*.code-workspace
+
+.DS_Store
+
+outputs/*
+!outputs/.gitkeep
+
+n8n_data/

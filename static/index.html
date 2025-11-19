@@ -1,0 +1,1221 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Workflow Builder - Llama Builder</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #0d1117;
+            min-height: 100vh;
+            color: #e6edf3;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        .header {
+            background: #161b22;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            border: 1px solid #30363d;
+        }
+
+        .header h1 {
+            font-size: 1.75rem;
+            color: #e6edf3;
+            margin-bottom: 0.25rem;
+        }
+
+        .header .subtitle {
+            color: #8b949e;
+            font-size: 0.9rem;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 350px 1fr 400px;
+            gap: 1rem;
+            min-height: calc(100vh - 150px);
+        }
+
+        .panel {
+            background: #161b22;
+            border-radius: 8px;
+            padding: 1.5rem;
+            border: 1px solid #30363d;
+        }
+
+        .panel h2 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: #e6edf3;
+            border-bottom: 2px solid #58a6ff;
+            padding-bottom: 0.5rem;
+        }
+
+        .upload-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .file-input-group {
+            margin-bottom: 1rem;
+        }
+
+        .file-input-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            color: #e6edf3;
+            font-size: 0.9rem;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            background: #0d1117;
+            color: #e6edf3;
+        }
+
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 6px;
+            border: none;
+            background: #238636;
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        button:hover:not(:disabled) {
+            background: #2ea043;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .status-section {
+            margin: 1rem 0;
+            padding: 0.75rem;
+            border-radius: 4px;
+            background: #1c2128;
+            border-left: 4px solid #8b949e;
+        }
+
+        .status-section.processing {
+            background: #1c2e4a;
+            border-left-color: #58a6ff;
+        }
+
+        .status-section.success {
+            background: #1a2f23;
+            border-left-color: #3fb950;
+        }
+
+        .status-section.error {
+            background: #39191c;
+            border-left-color: #f85149;
+        }
+
+        .visualization-panel {
+            background: #161b22;
+            border-radius: 8px;
+            padding: 1rem;
+            border: 1px solid #30363d;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .viz-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            padding: 0.5rem;
+            background: #0d1117;
+            border-radius: 4px;
+        }
+
+        .viz-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .viz-buttons button {
+            width: auto;
+            padding: 0.5rem 1rem;
+            font-size: 0.85rem;
+            background: #21262d;
+            border: 1px solid #30363d;
+        }
+
+        .viz-buttons button:hover {
+            background: #30363d;
+            border-color: #58a6ff;
+        }
+
+        .visualization {
+            flex: 1;
+            background: #0d1117;
+            border-radius: 4px;
+            border: 1px solid #30363d;
+            position: relative;
+            min-height: 600px;
+        }
+
+        #workflow-canvas {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .empty-state {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #6e7681;
+            pointer-events: none;
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            opacity: 0.3;
+            margin-bottom: 1rem;
+        }
+
+        .log-container {
+            max-height: 200px;
+            overflow-y: auto;
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 0.75rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            border: 1px solid #30363d;
+        }
+
+        .log-entry {
+            margin-bottom: 0.25rem;
+        }
+
+        .log-timestamp {
+            color: #6e7681;
+        }
+
+        .log-type-info {
+            color: #58a6ff;
+        }
+
+        .log-type-success {
+            color: #3fb950;
+        }
+
+        .log-type-error {
+            color: #f85149;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #161b22;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #30363d;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #484f58;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #30363d;
+            border-top: 2px solid #58a6ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 0.5rem;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .ontology-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .ontology-section h3 {
+            font-size: 1rem;
+            color: #e6edf3;
+            margin-bottom: 0.75rem;
+            padding: 0.5rem;
+            background: #0d1117;
+            border-radius: 4px;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #30363d;
+        }
+
+        .ontology-section h3:hover {
+            background: #161b22;
+            border-color: #58a6ff;
+        }
+
+        .ontology-section h3::after {
+            content: '▼';
+            font-size: 0.7rem;
+            transition: transform 0.2s;
+        }
+
+        .ontology-section h3.collapsed::after {
+            transform: rotate(-90deg);
+        }
+
+        .ontology-content {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 0.5rem;
+        }
+
+        .ontology-content.collapsed {
+            display: none;
+        }
+
+        .ontology-item {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .ontology-item:hover {
+            border-color: #58a6ff;
+            box-shadow: 0 0 0 1px #58a6ff;
+        }
+
+        .ontology-item-header {
+            font-weight: 600;
+            color: #e6edf3;
+            margin-bottom: 0.25rem;
+            font-size: 0.9rem;
+        }
+
+        .ontology-item-id {
+            font-size: 0.75rem;
+            color: #6e7681;
+            font-family: monospace;
+            margin-bottom: 0.5rem;
+        }
+
+        .ontology-item-detail {
+            font-size: 0.85rem;
+            color: #8b949e;
+            margin-top: 0.25rem;
+            padding-left: 0.5rem;
+            border-left: 2px solid #30363d;
+        }
+
+        .ontology-tag {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            background: #1f6feb;
+            color: #ffffff;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            margin: 0.15rem;
+            font-weight: 600;
+        }
+
+        .rule-item {
+            background: #0d1117;
+            border-left: 3px solid #6e7681;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            border-radius: 4px;
+            border: 1px solid #30363d;
+        }
+
+        .rule-item.safety {
+            border-left-color: #f85149;
+        }
+
+        .rule-item.operational_limit {
+            border-left-color: #d29922;
+        }
+
+        .rule-item.precondition {
+            border-left-color: #58a6ff;
+        }
+
+        .rule-item.postcondition {
+            border-left-color: #3fb950;
+        }
+
+        .rule-item.invariant {
+            border-left-color: #a371f7;
+        }
+
+        .rule-type-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .rule-type-badge.safety {
+            background: #39191c;
+            color: #f85149;
+        }
+
+        .rule-type-badge.operational_limit {
+            background: #341a03;
+            color: #d29922;
+        }
+
+        .rule-type-badge.precondition {
+            background: #1c2e4a;
+            color: #58a6ff;
+        }
+
+        .rule-type-badge.postcondition {
+            background: #1a2f23;
+            color: #3fb950;
+        }
+
+        .rule-type-badge.invariant {
+            background: #2e1f47;
+            color: #a371f7;
+        }
+
+        .rule-description {
+            font-size: 0.9rem;
+            color: #e6edf3;
+            margin: 0.5rem 0;
+        }
+
+        .stats-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .stat-box {
+            flex: 1;
+            min-width: 70px;
+            background: #0d1117;
+            padding: 0.5rem;
+            border-radius: 4px;
+            text-align: center;
+            border: 1px solid #30363d;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #58a6ff;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: #6e7681;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Workflow Builder - Interactive Visualization</h1>
+            <div class="subtitle">
+                Upload workflow specifications and explore tasks with their subtasks in an interactive graph
+            </div>
+        </div>
+
+        <div class="main-grid">
+            <!-- Left Panel: Controls -->
+            <div class="panel">
+                <h2>Upload & Control</h2>
+
+                <div class="upload-section">
+                    <form id="workflow-form">
+                        <div class="file-input-group">
+                            <label>
+                                Workflow Specification
+                                <span style="color: #f85149;">*required</span>
+                            </label>
+                            <input type="file" name="workflow_file" required>
+                        </div>
+
+                        <div class="file-input-group">
+                            <label>WPS File <span style="color: #6e7681;">(optional)</span></label>
+                            <input type="file" name="wps_file">
+                        </div>
+
+                        <div class="file-input-group">
+                            <label>Datasheet File <span style="color: #6e7681;">(optional)</span></label>
+                            <input type="file" name="datasheet_file">
+                        </div>
+
+                        <button type="submit" id="submit-btn">Start Analysis</button>
+                    </form>
+                </div>
+
+                <div id="status-section" class="status-section" style="display: none;">
+                    <div class="status-text" id="status-text">Idle</div>
+                    <div class="job-id" id="job-id" style="font-size: 0.8rem; color: #6e7681; margin-top: 0.25rem;">
+                    </div>
+                </div>
+
+                <h2 style="margin-top: 2rem;">Event Log</h2>
+                <div class="log-container" id="log-container"></div>
+            </div>
+
+            <!-- Right Panel: Visualization -->
+            <div class="visualization-panel">
+                <div class="viz-controls">
+                    <div style="font-size: 0.85rem; color: #8b949e;">
+                        <strong>Controls:</strong> Drag nodes • Scroll to zoom • Pan with mouse
+                    </div>
+                    <div class="viz-buttons">
+                        <button onclick="changeLayout('dagre')">Tree</button>
+                        <button onclick="changeLayout('cose')">Force</button>
+                        <button onclick="changeLayout('breadthfirst')">Flow</button>
+                        <button onclick="cy && cy.fit(50)">Fit</button>
+                    </div>
+                </div>
+                <div class="visualization">
+                    <div id="workflow-canvas"></div>
+                    <div class="empty-state" id="canvas-empty-state">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path
+                                d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M11,6V14L16.2,16.8L17,15.3L12.5,13V6H11Z" />
+                        </svg>
+                        <p>Workflow graph will appear here</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Ontology & Rules -->
+            <div class="panel">
+                <h2>🧬 Ontology & Rules</h2>
+
+                <div class="stats-row" id="ontology-stats" style="display: none;">
+                    <div class="stat-box">
+                        <div class="stat-value" id="stat-objects">0</div>
+                        <div class="stat-label">Objects</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="stat-processes">0</div>
+                        <div class="stat-label">Processes</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="stat-rules">0</div>
+                        <div class="stat-label">Rules</div>
+                    </div>
+                </div>
+
+                <div id="ontology-container">
+                    <div class="empty-state" style="position: static; transform: none; margin-top: 3rem;">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path
+                                d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M11,16.5L6.5,12L7.91,10.59L11,13.67L16.59,8.09L18,9.5L11,16.5Z" />
+                        </svg>
+                        <p>Ontology will appear after analysis</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+    <script>
+        let currentJobId = null;
+        let eventSource = null;
+        let tasks = {};
+        let transitions = [];
+        let ontology = null;
+        let rules = [];
+        let cy = null;
+
+        const form = document.getElementById('workflow-form');
+        const statusSection = document.getElementById('status-section');
+        const statusText = document.getElementById('status-text');
+        const jobIdEl = document.getElementById('job-id');
+        const submitBtn = document.getElementById('submit-btn');
+        const logContainer = document.getElementById('log-container');
+        const canvasEmptyState = document.getElementById('canvas-empty-state');
+        const ontologyContainer = document.getElementById('ontology-container');
+        const ontologyStats = document.getElementById('ontology-stats');
+
+        // Initialize Cytoscape
+        window.addEventListener('load', () => {
+            const container = document.getElementById('workflow-canvas');
+
+            cy = cytoscape({
+                container: container,
+                style: [
+                    {
+                        selector: 'node[type="task"]',
+                        style: {
+                            'background-color': '#1f6feb',
+                            'border-color': '#58a6ff',
+                            'border-width': 3,
+                            'label': 'data(label)',
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                            'font-size': '14px',
+                            'font-weight': 'bold',
+                            'color': '#ffffff',
+                            'text-wrap': 'wrap',
+                            'text-max-width': '150px',
+                            'width': 180,
+                            'height': 80,
+                            'shape': 'roundrectangle'
+                        }
+                    },
+                    {
+                        selector: 'node[type="subtask"]',
+                        style: {
+                            'background-color': '#21262d',
+                            'border-color': '#30363d',
+                            'border-width': 2,
+                            'label': 'data(label)',
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                            'font-size': '11px',
+                            'color': '#e6edf3',
+                            'text-wrap': 'wrap',
+                            'text-max-width': '120px',
+                            'width': 140,
+                            'height': 50,
+                            'shape': 'roundrectangle'
+                        }
+                    },
+                    {
+                        selector: 'node[type="subtask"][kind="human"]',
+                        style: {
+                            'border-color': '#d29922',
+                            'border-width': 3
+                        }
+                    },
+                    {
+                        selector: 'node:selected',
+                        style: {
+                            'background-color': '#388bfd',
+                            'border-color': '#79c0ff',
+                            'border-width': 4
+                        }
+                    },
+                    {
+                        selector: 'edge[type="task-flow"]',
+                        style: {
+                            'width': 3,
+                            'line-color': '#58a6ff',
+                            'target-arrow-color': '#58a6ff',
+                            'target-arrow-shape': 'triangle',
+                            'curve-style': 'bezier',
+                            'arrow-scale': 1.5,
+                            'label': 'data(label)',
+                            'font-size': '10px',
+                            'color': '#8b949e',
+                            'text-background-color': '#0d1117',
+                            'text-background-opacity': 1,
+                            'text-background-padding': '3px'
+                        }
+                    },
+                    {
+                        selector: 'edge[type="subtask-flow"]',
+                        style: {
+                            'width': 2,
+                            'line-color': '#6e7681',
+                            'target-arrow-color': '#6e7681',
+                            'target-arrow-shape': 'triangle',
+                            'curve-style': 'bezier',
+                            'arrow-scale': 1.2
+                        }
+                    },
+                    {
+                        selector: 'edge[type="parent-child"]',
+                        style: {
+                            'width': 2,
+                            'line-color': '#30363d',
+                            'line-style': 'dashed',
+                            'target-arrow-shape': 'none',
+                            'curve-style': 'bezier'
+                        }
+                    }
+                ],
+                layout: {
+                    name: 'dagre',
+                    rankDir: 'TB',
+                    nodeSep: 50,
+                    rankSep: 100
+                },
+                minZoom: 0.3,
+                maxZoom: 3,
+                wheelSensitivity: 0.2
+            });
+
+            cy.on('tap', 'node', function (evt) {
+                const node = evt.target;
+                const data = node.data();
+                log(`Selected: ${data.label}`, 'info');
+            });
+        });
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const timestamp = new Date().toLocaleTimeString();
+            entry.innerHTML = `<span class="log-timestamp">[${timestamp}]</span> <span class="log-type-${type}">${message}</span>`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function setStatus(text, state = 'processing') {
+            statusSection.style.display = 'block';
+            statusSection.className = `status-section ${state}`;
+            statusText.innerHTML = text;
+        }
+
+        function drawWorkflow() {
+            if (!cy || Object.keys(tasks).length === 0) {
+                if (canvasEmptyState) {
+                    canvasEmptyState.style.display = 'block';
+                }
+                return;
+            }
+
+            if (canvasEmptyState) {
+                canvasEmptyState.style.display = 'none';
+            }
+
+            const nodes = [];
+            const edges = [];
+            let subtaskIdCounter = 0;
+
+            // Create task nodes and their subtask nodes
+            Object.values(tasks).forEach((task, taskIdx) => {
+                // Main task node
+                nodes.push({
+                    data: {
+                        id: task.task_id,
+                        label: (task.label || task.task_id).substring(0, 40),
+                        type: 'task'
+                    }
+                });
+
+                // Subtask nodes
+                if (task.subtasks && task.subtasks.length > 0) {
+                    task.subtasks.forEach((subtask, stIdx) => {
+                        const subtaskId = `${task.task_id}_sub_${stIdx}`;
+                        nodes.push({
+                            data: {
+                                id: subtaskId,
+                                label: `${stIdx + 1}. ${(subtask.description || 'Subtask').substring(0, 50)}`,
+                                type: 'subtask',
+                                kind: subtask.kind || 'system',
+                                skill: subtask.skill
+                            }
+                        });
+
+                        // Connect task to its first subtask
+                        if (stIdx === 0) {
+                            edges.push({
+                                data: {
+                                    id: `${task.task_id}_to_${subtaskId}`,
+                                    source: task.task_id,
+                                    target: subtaskId,
+                                    type: 'parent-child'
+                                }
+                            });
+                        }
+
+                        // Connect subtasks in sequence
+                        if (stIdx > 0) {
+                            const prevSubtaskId = `${task.task_id}_sub_${stIdx - 1}`;
+                            edges.push({
+                                data: {
+                                    id: `${prevSubtaskId}_to_${subtaskId}`,
+                                    source: prevSubtaskId,
+                                    target: subtaskId,
+                                    type: 'subtask-flow'
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+
+            // Create task-to-task edges
+            transitions.forEach((t, idx) => {
+                // Connect from last subtask if exists, otherwise from task
+                const sourceTask = tasks[t.source_step_id];
+                let sourceId = t.source_step_id;
+
+                if (sourceTask && sourceTask.subtasks && sourceTask.subtasks.length > 0) {
+                    sourceId = `${t.source_step_id}_sub_${sourceTask.subtasks.length - 1}`;
+                }
+
+                edges.push({
+                    data: {
+                        id: `trans_${idx}`,
+                        source: sourceId,
+                        target: t.target_step_id,
+                        label: t.condition_text || t.outcome_name || '',
+                        type: 'task-flow'
+                    }
+                });
+            });
+
+            // Update graph
+            cy.elements().remove();
+            cy.add(nodes);
+            cy.add(edges);
+
+            // Run layout
+            cy.layout({
+                name: 'dagre',
+                rankDir: 'TB',
+                nodeSep: 50,
+                rankSep: 100,
+                animate: true,
+                animationDuration: 500
+            }).run();
+
+            setTimeout(() => cy.fit(50), 600);
+        }
+
+        function changeLayout(layoutName) {
+            if (!cy) return;
+
+            const layoutOptions = {
+                dagre: {
+                    name: 'dagre',
+                    rankDir: 'TB',
+                    nodeSep: 50,
+                    rankSep: 100,
+                    animate: true
+                },
+                breadthfirst: {
+                    name: 'breadthfirst',
+                    directed: true,
+                    spacingFactor: 1.5,
+                    animate: true
+                },
+                cose: {
+                    name: 'cose',
+                    animate: true,
+                    nodeRepulsion: 8000,
+                    idealEdgeLength: 100,
+                    edgeElasticity: 100
+                }
+            };
+
+            const layout = layoutOptions[layoutName] || layoutOptions.dagre;
+            cy.layout(layout).run();
+            setTimeout(() => cy.fit(50), 600);
+            log(`Layout: ${layoutName}`, 'info');
+        }
+
+        function addTask(taskData) {
+            tasks[taskData.task_id] = taskData;
+            drawWorkflow();
+        }
+
+        function addSubtask(taskId, subtaskData) {
+            if (tasks[taskId]) {
+                if (!tasks[taskId].subtasks) {
+                    tasks[taskId].subtasks = [];
+                }
+                tasks[taskId].subtasks.push(subtaskData);
+                drawWorkflow();
+            }
+        }
+
+        function updateTransitions(newTransitions) {
+            transitions = newTransitions;
+            drawWorkflow();
+        }
+
+        // SSE connection
+        function connectSSE(jobId) {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            log(`Connecting to job ${jobId}`, 'info');
+            eventSource = new EventSource(`/events/${jobId}`);
+
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleSSEEvent(data);
+                } catch (e) {
+                    console.error('SSE parse error:', e);
+                }
+            };
+
+            eventSource.onerror = () => {
+                log('Connection lost, retrying...', 'error');
+                setTimeout(() => connectSSE(jobId), 5000);
+            };
+        }
+
+        function handleSSEEvent(data) {
+            switch (data.type) {
+                case 'connected':
+                    log('Connected to live updates', 'success');
+                    break;
+
+                case 'initial_state':
+                    tasks = data.tasks || {};
+                    transitions = data.transitions || [];
+                    if (data.ontology) {
+                        ontology = data.ontology;
+                        renderOntology();
+                        updateOntologyStats();
+                    }
+                    if (data.rules) {
+                        rules = data.rules.rules || data.rules || [];
+                        renderOntology();
+                        updateOntologyStats();
+                    }
+                    drawWorkflow();
+                    log(`Loaded ${Object.keys(tasks).length} tasks`, 'info');
+                    break;
+
+                case 'ontology_update':
+                    log('Ontology extracted', 'success');
+                    ontology = data.ontology;
+                    renderOntology();
+                    updateOntologyStats();
+                    break;
+
+                case 'rules_update':
+                    log(`Rules extracted: ${data.rules.length}`, 'success');
+                    rules = data.rules;
+                    renderOntology();
+                    updateOntologyStats();
+                    break;
+
+                case 'task_update':
+                    log(`Task: ${data.label}`, 'info');
+                    addTask({
+                        task_id: data.task_id,
+                        label: data.label,
+                        description: data.description,
+                        subtasks: []
+                    });
+                    break;
+
+                case 'subtask_update':
+                    const subtask = data.subtask;
+                    log(`Subtask: ${subtask.description.substring(0, 40)}...`, 'info');
+                    addSubtask(data.task_id, subtask);
+                    break;
+
+                case 'relations_update':
+                    log(`Relations: ${data.links.length} connections`, 'info');
+                    updateTransitions(data.links);
+                    break;
+
+                case 'job_complete':
+                    log('Analysis complete!', 'success');
+                    setStatus('✓ Complete', 'success');
+                    submitBtn.disabled = false;
+                    break;
+
+                case 'error':
+                    log(`Error: ${data.error}`, 'error');
+                    setStatus(`✗ Error: ${data.error}`, 'error');
+                    submitBtn.disabled = false;
+                    break;
+            }
+        }
+
+        function updateOntologyStats() {
+            if (!ontology) return;
+
+            const objectCount = Array.isArray(ontology.objects) ? ontology.objects.length : 0;
+            const processCount = Array.isArray(ontology.processes) ? ontology.processes.length : 0;
+            const ruleCount = rules.length;
+
+            document.getElementById('stat-objects').textContent = objectCount;
+            document.getElementById('stat-processes').textContent = processCount;
+            document.getElementById('stat-rules').textContent = ruleCount;
+
+            if (objectCount > 0 || processCount > 0 || ruleCount > 0) {
+                ontologyStats.style.display = 'flex';
+            }
+        }
+
+        function renderOntology() {
+            if (!ontology && (!rules || rules.length === 0)) return;
+
+            let html = '';
+
+            // Objects section
+            if (ontology && ontology.objects && ontology.objects.length > 0) {
+                html += '<div class="ontology-section">';
+                html += '<h3 onclick="toggleSection(this)">📦 Objects</h3>';
+                html += '<div class="ontology-content">';
+
+                ontology.objects.forEach(obj => {
+                    if (typeof obj === 'string') {
+                        html += `<div class="ontology-item">
+                            <div class="ontology-item-header">${escapeHtml(obj)}</div>
+                        </div>`;
+                    } else if (obj && obj.id) {
+                        html += `<div class="ontology-item">
+                            <div class="ontology-item-header">${escapeHtml(obj.label || obj.id)}</div>
+                            <div class="ontology-item-id">${escapeHtml(obj.id)}</div>`;
+
+                        if (obj.kind) {
+                            html += `<div class="ontology-item-detail">Kind: <strong>${escapeHtml(obj.kind)}</strong></div>`;
+                        }
+
+                        if (obj.tags && obj.tags.length > 0) {
+                            html += '<div class="ontology-item-detail">';
+                            obj.tags.forEach(tag => {
+                                html += `<span class="ontology-tag">${escapeHtml(tag)}</span>`;
+                            });
+                            html += '</div>';
+                        }
+
+                        html += '</div>';
+                    }
+                });
+
+                html += '</div></div>';
+            }
+
+            // Processes section
+            if (ontology && ontology.processes && ontology.processes.length > 0) {
+                html += '<div class="ontology-section">';
+                html += '<h3 onclick="toggleSection(this)">⚙️ Processes</h3>';
+                html += '<div class="ontology-content">';
+
+                ontology.processes.forEach(proc => {
+                    if (typeof proc === 'string') {
+                        html += `<div class="ontology-item">
+                            <div class="ontology-item-header">${escapeHtml(proc)}</div>
+                        </div>`;
+                    } else if (proc && proc.id) {
+                        html += `<div class="ontology-item">
+                            <div class="ontology-item-header">${escapeHtml(proc.label || proc.id)}</div>
+                            <div class="ontology-item-id">${escapeHtml(proc.id)}</div>`;
+
+                        if (proc.tags && proc.tags.length > 0) {
+                            html += '<div class="ontology-item-detail">';
+                            proc.tags.forEach(tag => {
+                                html += `<span class="ontology-tag">${escapeHtml(tag)}</span>`;
+                            });
+                            html += '</div>';
+                        }
+
+                        html += '</div>';
+                    }
+                });
+
+                html += '</div></div>';
+            }
+
+            // Properties section
+            if (ontology && ontology.properties && ontology.properties.length > 0) {
+                html += '<div class="ontology-section">';
+                html += '<h3 onclick="toggleSection(this)">🏷️ Properties</h3>';
+                html += '<div class="ontology-content">';
+
+                ontology.properties.forEach(prop => {
+                    if (typeof prop === 'string') {
+                        html += `<span class="ontology-tag">${escapeHtml(prop)}</span>`;
+                    } else if (prop && prop.id) {
+                        html += `<div class="ontology-item">
+                            <div class="ontology-item-header">${escapeHtml(prop.label || prop.id)}</div>`;
+                        if (prop.tags && prop.tags.length > 0) {
+                            html += '<div class="ontology-item-detail">';
+                            prop.tags.forEach(tag => {
+                                html += `<span class="ontology-tag">${escapeHtml(tag)}</span>`;
+                            });
+                            html += '</div>';
+                        }
+                        html += '</div>';
+                    }
+                });
+
+                html += '</div></div>';
+            }
+
+            // Events section
+            if (ontology && ontology.events && ontology.events.length > 0) {
+                html += '<div class="ontology-section">';
+                html += '<h3 onclick="toggleSection(this)">⚡ Events</h3>';
+                html += '<div class="ontology-content">';
+
+                ontology.events.forEach(event => {
+                    if (typeof event === 'string') {
+                        html += `<div class="ontology-item">
+                            <div class="ontology-item-header">${escapeHtml(event)}</div>
+                        </div>`;
+                    } else if (event && event.id) {
+                        html += `<div class="ontology-item">
+                            <div class="ontology-item-header">${escapeHtml(event.label || event.id)}</div>
+                            <div class="ontology-item-id">${escapeHtml(event.id)}</div>`;
+
+                        if (event.tags && event.tags.length > 0) {
+                            html += '<div class="ontology-item-detail">';
+                            event.tags.forEach(tag => {
+                                html += `<span class="ontology-tag">${escapeHtml(tag)}</span>`;
+                            });
+                            html += '</div>';
+                        }
+
+                        html += '</div>';
+                    }
+                });
+
+                html += '</div></div>';
+            }
+
+            // Rules section
+            if (rules && rules.length > 0) {
+                html += '<div class="ontology-section">';
+                html += '<h3 onclick="toggleSection(this)">📋 Rules</h3>';
+                html += '<div class="ontology-content">';
+
+                rules.forEach(rule => {
+                    const ruleType = rule.rule_type || 'unknown';
+                    html += `<div class="rule-item ${ruleType}">
+                        <span class="rule-type-badge ${ruleType}">${ruleType.replace('_', ' ')}</span>
+                        <div class="rule-description">${escapeHtml(rule.description || '')}</div>`;
+
+                    if (rule.applies_to && rule.applies_to.length > 0) {
+                        html += `<div style="font-size: 0.8rem; color: #6e7681; font-style: italic; margin-top: 0.5rem;">Applies to: ${rule.applies_to.map(escapeHtml).join(', ')}</div>`;
+                    }
+
+                    html += '</div>';
+                });
+
+                html += '</div></div>';
+            }
+
+            ontologyContainer.innerHTML = html;
+        }
+
+        function toggleSection(header) {
+            const content = header.nextElementSibling;
+            header.classList.toggle('collapsed');
+            content.classList.toggle('collapsed');
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Form submission
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const workflowFile = form.querySelector('input[name="workflow_file"]').files[0];
+            if (!workflowFile) {
+                alert('Please select a workflow file');
+                return;
+            }
+
+            tasks = {};
+            transitions = [];
+            ontology = null;
+            rules = [];
+            logContainer.innerHTML = '';
+            ontologyContainer.innerHTML = '<div class="empty-state" style="position: static; transform: none; margin-top: 3rem;"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M11,16.5L6.5,12L7.91,10.59L11,13.67L16.59,8.09L18,9.5L11,16.5Z" /></svg><p>Ontology will appear after analysis</p></div>';
+            ontologyStats.style.display = 'none';
+
+            submitBtn.disabled = true;
+            setStatus('<span class="spinner"></span> Uploading...', 'processing');
+            log('Uploading specification...', 'info');
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                currentJobId = data.job_id;
+                jobIdEl.textContent = `Job: ${currentJobId}`;
+                log(`Job started: ${currentJobId}`, 'success');
+                setStatus('<span class="spinner"></span> Processing...', 'processing');
+
+                connectSSE(currentJobId);
+
+            } catch (error) {
+                log(`Failed: ${error.message}`, 'error');
+                setStatus(`✗ Failed`, 'error');
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,56 @@
+{
+  "name": "Workflow Analyser (Flask + Llama3)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspace",
+  // Network configuration to access external services
+  "runArgs": [
+    "--network=host"
+  ],
+  // Mount configuration - THIS IS THE KEY PART FOR EDITING
+  "mounts": [
+    // Mount the entire project directory for live editing
+    "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached"
+    // Additional volume for persistent workflow storage
+    //"source=workflow_set_volume,target=/workspace/workflow_set,type=volume"
+  ],
+  // Port forwarding for Flask server
+  "forwardPorts": [
+    8010
+  ],
+  // Environment variables for external service connectivity
+  "remoteEnv": {
+    "N8N_BUILDER_URL": "http://localhost:5678/webhook/wf_builder_agent",
+    "OLLAMA_URL": "http://localhost:11434/api/chat",
+    "OLLAMA_MODEL": "llama3"
+  },
+  // VS Code customizations
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.analysis.typeCheckingMode": "basic",
+        "python.testing.pytestEnabled": true,
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": true,
+        "editor.formatOnSave": true,
+        "python.formatting.provider": "black"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-azuretools.vscode-docker",
+        "ms-python.black-formatter",
+        "ms-python.debugpy"
+      ]
+    }
+  },
+  // Commands to run after container creation
+  "postCreateCommand": "pip install --no-cache-dir -r requirements.txt",
+  // Run as the vscode user
+  "remoteUser": "vscode",
+  // Ensure the container user can write to workspace
+  "containerUser": "vscode"
+}

@@ -1,0 +1,415 @@
+{
+    "objects": [
+        {
+            "id": "db.etl_batch_log",
+            "kind": "database",
+            "label": "ETL Batch Log Database",
+            "context_key": "etl_batch_log",
+            "aliases": [
+                "ETL batch DB",
+                "batch log DB"
+            ],
+            "tags": [
+                "etl",
+                "logging",
+                "postgres"
+            ]
+        },
+        {
+            "id": "db.etl_source",
+            "kind": "database",
+            "label": "ETL Source Database",
+            "context_key": "etl_source",
+            "aliases": [
+                "source DB",
+                "raw data DB"
+            ],
+            "tags": [
+                "etl",
+                "source",
+                "postgres"
+            ]
+        },
+        {
+            "id": "db.etl_warehouse",
+            "kind": "database",
+            "label": "Analytics Data Warehouse",
+            "context_key": "etl_warehouse",
+            "aliases": [
+                "warehouse DB",
+                "analytics DB"
+            ],
+            "tags": [
+                "analytics",
+                "warehouse",
+                "postgres"
+            ]
+        },
+        {
+            "id": "wh.alerts_ops",
+            "kind": "webhook",
+            "label": "Operations Alerts Webhook",
+            "context_key": "alerts_ops",
+            "aliases": [
+                "ops alerts endpoint",
+                "incident webhook"
+            ],
+            "tags": [
+                "alerts",
+                "ops",
+                "slack",
+                "teams"
+            ]
+        },
+        {
+            "id": "wh.logging_siem",
+            "kind": "webhook",
+            "label": "Logging / SIEM Ingest Endpoint",
+            "context_key": "logging_siem",
+            "aliases": [
+                "log ingest",
+                "siem endpoint"
+            ],
+            "tags": [
+                "logging",
+                "security",
+                "siem"
+            ]
+        },
+        {
+            "id": "wh.external_partner_api",
+            "kind": "webhook",
+            "label": "External Partner API",
+            "context_key": "external_partner_api",
+            "aliases": [
+                "partner api",
+                "supplier api"
+            ],
+            "tags": [
+                "integration",
+                "external"
+            ]
+        },
+        {
+            "id": "topic.metrics.process_health",
+            "kind": "topic",
+            "label": "Process Health Metrics Topic",
+            "context_key": "metrics_process_health",
+            "aliases": [
+                "process health topic",
+                "health metrics"
+            ],
+            "tags": [
+                "metrics",
+                "monitoring",
+                "mqtt"
+            ]
+        },
+        {
+            "id": "topic.robot1.control",
+            "kind": "topic",
+            "label": "Robot 1 Control Topic",
+            "context_key": "robot1_control",
+            "aliases": [
+                "robot control topic",
+                "robot1 cmd"
+            ],
+            "tags": [
+                "robotics",
+                "control",
+                "mqtt"
+            ]
+        },
+        {
+            "id": "topic.alarms.high_priority",
+            "kind": "topic",
+            "label": "High Priority Alarms Topic",
+            "context_key": "alarms_high_priority",
+            "aliases": [
+                "critical alarms topic"
+            ],
+            "tags": [
+                "alerts",
+                "alarms",
+                "mqtt"
+            ]
+        },
+        {
+            "id": "machine.kuka_kmr_01",
+            "kind": "machine",
+            "label": "KUKA KMR Mobile Robot 01",
+            "context_key": "kuka_kmr_01",
+            "aliases": [
+                "kmr01",
+                "mobile robot 1"
+            ],
+            "tags": [
+                "robotics",
+                "mobile",
+                "kuka"
+            ]
+        },
+        {
+            "id": "machine.plc_line_1",
+            "kind": "machine",
+            "label": "Production Line 1 PLC",
+            "context_key": "plc_line_1",
+            "aliases": [
+                "line1 plc",
+                "plc1"
+            ],
+            "tags": [
+                "plc",
+                "line1",
+                "control"
+            ]
+        },
+        {
+            "id": "machine.test_station_01",
+            "kind": "machine",
+            "label": "Test Station 01",
+            "context_key": "test_station_01",
+            "aliases": [
+                "inspection bench",
+                "test bench 1"
+            ],
+            "tags": [
+                "ndt",
+                "qa",
+                "inspection"
+            ]
+        },
+        {
+            "id": "person.batch_manager",
+            "kind": "person",
+            "label": "Batch Manager",
+            "context_key": "batch_manager",
+            "aliases": [
+                "batch supervisor",
+                "batch owner"
+            ],
+            "tags": [
+                "ops",
+                "production",
+                "responsible"
+            ]
+        },
+        {
+            "id": "person.data_engineer",
+            "kind": "person",
+            "label": "Data Engineer",
+            "context_key": "data_engineer",
+            "aliases": [
+                "etl engineer",
+                "pipeline engineer"
+            ],
+            "tags": [
+                "data",
+                "etl",
+                "engineering"
+            ]
+        },
+        {
+            "id": "person.quality_manager",
+            "kind": "person",
+            "label": "Quality Manager",
+            "context_key": "quality_manager",
+            "aliases": [
+                "qa manager",
+                "quality lead"
+            ],
+            "tags": [
+                "qa",
+                "compliance",
+                "signoff"
+            ]
+        },
+        {
+            "id": "role.operations_team",
+            "kind": "role",
+            "label": "Operations Team",
+            "context_key": "operations_team",
+            "aliases": [
+                "ops team",
+                "shift team"
+            ],
+            "tags": [
+                "ops",
+                "team"
+            ]
+        },
+        {
+            "id": "role.incident_on_call",
+            "kind": "role",
+            "label": "Incident On-Call",
+            "context_key": "incident_on_call",
+            "aliases": [
+                "on-call engineer",
+                "duty engineer"
+            ],
+            "tags": [
+                "incident",
+                "support"
+            ]
+        },
+        {
+            "id": "batch.etl_daily_extract",
+            "kind": "batch",
+            "label": "Daily ETL Extract Batch",
+            "context_key": "etl_daily_extract",
+            "aliases": [
+                "daily batch",
+                "daily extract"
+            ],
+            "tags": [
+                "batch",
+                "etl",
+                "daily"
+            ]
+        },
+        {
+            "id": "batch.ingestion_job",
+            "kind": "batch",
+            "label": "Ingestion Job Batch",
+            "context_key": "ingestion_job",
+            "aliases": [
+                "ingest job"
+            ],
+            "tags": [
+                "batch",
+                "ingest"
+            ]
+        },
+        {
+            "id": "state.batch_status",
+            "kind": "state",
+            "label": "Batch Status Variable",
+            "context_key": "batch_status",
+            "aliases": [
+                "batch_state",
+                "status var"
+            ],
+            "tags": [
+                "state",
+                "control"
+            ]
+        },
+        {
+            "id": "state.metric_value",
+            "kind": "state",
+            "label": "Generic Metric Value",
+            "context_key": "metric_value",
+            "aliases": [
+                "metric",
+                "kpi value"
+            ],
+            "tags": [
+                "state",
+                "metrics"
+            ]
+        }
+    ],
+    "processes": [
+        {
+            "id": "proc.file_ingestion_pipeline",
+            "kind": "process",
+            "label": "File Ingestion Pipeline",
+            "aliases": [
+                "ingestion pipeline",
+                "file ingest"
+            ],
+            "tags": [
+                "etl",
+                "ingest"
+            ],
+            "steps": [
+                "step.check_input_files",
+                "step.flag_invalid_files",
+                "step.basic_cleaning",
+                "step.structural_validation",
+                "step.write_to_db"
+            ]
+        },
+        {
+            "id": "proc.alerting_pipeline",
+            "kind": "process",
+            "label": "Alerting & Escalation Pipeline",
+            "aliases": [
+                "alert pipeline"
+            ],
+            "tags": [
+                "alerts",
+                "ops"
+            ],
+            "steps": [
+                "step.detect_anomaly",
+                "step.log_event",
+                "step.notify_operator",
+                "step.escalate_if_unresolved"
+            ]
+        }
+    ],
+    "properties": [
+        {
+            "id": "prop.file.integrity",
+            "label": "File Integrity",
+            "tags": [
+                "file",
+                "quality"
+            ],
+            "applies_to": [
+                "batch.etl_daily_extract"
+            ]
+        },
+        {
+            "id": "prop.batch.status",
+            "label": "Batch Status",
+            "tags": [
+                "batch",
+                "status"
+            ],
+            "applies_to": [
+                "batch.etl_daily_extract",
+                "batch.ingestion_job"
+            ]
+        }
+    ],
+    "events": [
+        {
+            "id": "event.files_missing",
+            "label": "Files Missing or Mis-Named",
+            "tags": [
+                "error",
+                "etl"
+            ],
+            "related_objects": [
+                "batch.etl_daily_extract",
+                "db.etl_batch_log"
+            ]
+        },
+        {
+            "id": "event.batch_requires_investigation",
+            "label": "Batch Requires Investigation",
+            "tags": [
+                "incident",
+                "qa"
+            ],
+            "related_objects": [
+                "batch.etl_daily_extract",
+                "person.quality_manager"
+            ]
+        },
+        {
+            "id": "event.metric_breach",
+            "label": "Metric Threshold Breached",
+            "tags": [
+                "alert",
+                "metrics"
+            ],
+            "related_objects": [
+                "topic.metrics.process_health",
+                "person.batch_manager"
+            ]
+        }
+    ]
+}
