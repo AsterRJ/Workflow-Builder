@@ -12,6 +12,33 @@ import uuid
 import threading
 from knowledge.db_manager import CONTEXT_DB
 from knowledge.ont_manager import Ontology
+from knowledge.ollama_client import OllamaClient
+from knowledge.context_manager import SetupContext
+
+
+# TODO:
+# - Context per job
+
+
+# ------------------------- GLOBAL SETUP CONTEXT ----------------------
+
+
+BUILDER_SETUP_FILE = os.getenv(
+    "BUILDER_SETUP_FILE", "config/builder_setup.json")
+SETUP_CONTEXT = SetupContext()
+
+
+# ------------------------- GLOBAL LLM CLIENT & CONFIG ----------------------
+
+ollama_client = OllamaClient()
+
+# The circumspection of a SLM replaces our own judgement
+APPLY_LLM_DECISION_AUGMENTATION = os.getenv(
+    "APPLY_LLM_DECISION_AUGMENTATION", "1") == "1"
+
+# We enable planning for custom node jobs
+APPLY_LLM_NODE_PLANNING = os.getenv(
+    "APPLY_LLM_NODE_PLANNING", "1") == "1"
 
 
 # --- Global ontology -------------------------------------------------
@@ -75,6 +102,11 @@ STATE_LOCK = threading.Lock()
 # SSE (Server-Sent Events) for live updates
 SSE_CLIENTS: Dict[str, queue.Queue] = {}
 SSE_LOCK = threading.Lock()
+
+
+# Lazy defn:
+GLOBAL_HUMAN_REVIEW_NODE = "synthetic_human_review"
+
 
 # --------------------------------------------------------------------------------------
 # SKILLS REGISTRY
@@ -235,6 +267,7 @@ class N8NWorkflow:
 # --------------------------------------------------------------------------------------
 # COMPREHENSIVE SKILL TO N8N NODE TYPE MAPPING WITH ERROR HANDLING
 # --------------------------------------------------------------------------------------
+
 SKILL_TO_N8N_TYPE = {
     "filesystem.check_expected_files": {
         "type": "n8n-nodes-base.executeCommand",
@@ -759,6 +792,695 @@ EMAIL_TEMPLATES = {
     }
 }
 
+
+# --------------------------------------------------------------------------------------
+#  Decisions
+# --------------------------------------------------------------------------------------
+
+
+GENERIC_SKILL_IDS = {
+    "generic.llm_unspecified",
+    "generic.unspecified",
+    "generic.todo",
+}
+
+
+def should_use_llm_for_subtask(subtask: Dict[str, Any]) -> bool:
+    """
+    Decide whether we should ask the LLM to pick a more specific skill
+    for this subtask.
+
+    Heuristics:
+    - Skip explicit decision nodes (handled by the decision pipeline).
+    - Trigger if no skill is set or the skill is one of the generic placeholders.
+    """
+    if subtask.get("decision_node"):
+        return False
+
+    skill = (subtask.get("skill") or "").strip()
+    if not skill:
+        return True
+
+    if skill in GENERIC_SKILL_IDS:
+        return True
+
+    return False
+
+
+def llm_choose_skill_for_subtask(
+    job_id: str,
+    task: Dict[str, Any],
+    subtask: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """
+    Ask the LLM to pick the best skill_id for a subtask, using:
+    - SetupContext (workplace / tech stack / human output node)
+    - The global skills registry
+    - The task + subtask text
+
+    Returns a dict like:
+      {
+        "chosen_skill_id": "code.python_transform",
+        "reason": "...",
+        "confidence": 0.82
+      }
+    or None on failure.
+    """
+
+    # You may need to adapt this method name to match your SetupContext class.
+    try:
+        # job_id) # Assume all contexts are the same for each job - no weird corde seperations
+        setup_ctx = SETUP_CONTEXT.get_llm_code_context()
+    except AttributeError:
+        # Fallback if your class uses a different method name
+        setup_ctx = {}
+
+    skills_summary = _skills_summary_for_llm()
+
+    payload = {
+        "setup_context": setup_ctx,
+        "skills": skills_summary,
+        "task": {
+            "id": task.get("id"),
+            "label": task.get("label"),
+            "description": task.get("description"),
+            "category": task.get("category"),
+        },
+        "subtask": {
+            "description": subtask.get("description"),
+            "kind": subtask.get("kind"),
+            "current_skill": subtask.get("skill"),
+            "decision_node": subtask.get("decision_node", False),
+        },
+        "instruction": (
+            "Choose the SINGLE best skill_id from `skills` that should be used "
+            "to implement this subtask as an n8n node.\n\n"
+            "In particular:\n"
+            "- Use code-related skills if the subtask is about computing, "
+            "  transforming, or analysing data (e.g. 'take the mean of X').\n"
+            "- Use email/notification skills if the subtask is about informing "
+            "  people or sending reports.\n"
+            "- Use data-decision / routing skills if the subtask is about "
+            "  branching based on dataset content or unclear data structure.\n"
+            "- If an appropriate, specific skill exists, prefer it over "
+            "  generic ones.\n"
+        ),
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "chosen_skill_id": {"type": "string"},
+                "confidence": {"type": "number"},
+                "reason": {"type": "string"},
+            },
+            "required": ["chosen_skill_id"],
+        },
+    }
+
+    system_msg = {
+        "role": "system",
+        "content": (
+            "You are a node-planning assistant for an n8n workflow builder.\n"
+            "Your job is to choose ONE skill_id that will determine which "
+            "n8n node template is used for a given subtask.\n"
+            "Use the setup_context (tech stack, human output node, data sources) "
+            "to make sensible choices."
+        ),
+    }
+
+    user_msg = {
+        "role": "user",
+        "content": json.dumps(payload),
+    }
+
+    try:
+        # Assuming OllamaClient has a JSON-friendly helper; if not, mirror
+        # whatever you do in query_llm_for_decision_routes.
+        resp = ollama_client.chat_json(
+            messages=[system_msg, user_msg],
+            temperature=0.0,
+        )
+    except Exception as e:
+        print(f"[llm-node-planning] Error calling LLM for job {job_id}: {e}")
+        return None
+
+    if not isinstance(resp, dict):
+        return None
+
+    chosen = (resp.get("chosen_skill_id") or "").strip()
+    if not chosen:
+        return None
+
+    return {
+        "chosen_skill_id": chosen,
+        "confidence": resp.get("confidence"),
+        "reason": resp.get("reason"),
+    }
+
+
+def augment_tasks_with_llm_node_planning(
+    job_id: str,
+    tasks: Dict[str, Dict[str, Any]],
+    subtasks: Dict[str, List[Dict[str, Any]]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    For each subtask that needs help, call the LLM and update its `skill`
+    (and stash the plan under `llm_node_plan`).
+
+    Returns a NEW subtasks dict; tasks are left unchanged.
+    """
+
+    if not APPLY_LLM_NODE_PLANNING:
+        return subtasks
+
+    # Shallow copy outer dict so we don't mutate the original
+    new_subtasks: Dict[str, List[Dict[str, Any]]] = {}
+
+    for task_id, subs in subtasks.items():
+        task = tasks.get(task_id, {})
+        new_list: List[Dict[str, Any]] = []
+
+        for sub in subs:
+            sub_copy = dict(sub)
+
+            if should_use_llm_for_subtask(sub_copy):
+                plan = llm_choose_skill_for_subtask(job_id, task, sub_copy)
+                if plan and plan.get("chosen_skill_id"):
+                    prev_skill = sub_copy.get("skill")
+                    sub_copy["previous_skill"] = prev_skill
+                    sub_copy["skill"] = plan["chosen_skill_id"]
+                    sub_copy["llm_node_plan"] = plan
+                    print(
+                        f"[llm-node-planning] job={job_id} task={task_id} "
+                        f"sub='{sub_copy.get('description')}' -> {plan['chosen_skill_id']}"
+                    )
+
+            new_list.append(sub_copy)
+
+        new_subtasks[task_id] = new_list
+
+    return new_subtasks
+
+
+def _skills_summary_for_llm() -> List[Dict[str, Any]]:
+    """
+    Lightweight view of skills, similar to /skills, for use in prompts.
+    """
+    return [
+        {
+            "id": skill.id,
+            "description": skill.description,
+            "category": skill.category,
+        }
+        for skill in SKILL_REGISTRY.values()
+    ]
+
+
+def find_decision_subtasks(
+    tasks: Dict[str, Dict[str, Any]],
+    subtasks_by_task: Dict[str, List[Dict[str, Any]]],
+    relations_map: Dict[str, List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    """
+    Identify decision points at the *subtask* level.
+
+    A subtask is a decision point if:
+      - subtask.get("decision_node") is True
+
+    Returns a list of dicts of the form:
+      {
+        "task_id": "<parent task id>",
+        "step_id": "<parent task id>",     # for compatibility with step-based code
+        "subtask_id": "<subtask id>",
+        "task": { ... },                   # parent task data
+        "subtask": { ... },                # full subtask object
+        "relations": [ ... ]               # outgoing relations from the parent task
+      }
+    """
+    decision_points: List[Dict[str, Any]] = []
+
+    for task_id, task_data in tasks.items():
+        # Prefer subtasks_by_task if present; fall back to mirrored task["subtasks"]
+        subtasks = subtasks_by_task.get(
+            task_id) or task_data.get("subtasks") or []
+        if not subtasks:
+            continue
+
+        outgoing = relations_map.get(task_id, [])
+
+        for st in subtasks:
+            if not st:
+                continue
+
+            if st.get("decision_node") is True:
+                decision_points.append({
+                    "task_id": task_id,
+                    "step_id": task_id,
+                    "subtask_id": st.get("id"),
+                    "task": task_data,
+                    "subtask": st,
+                    "relations": outgoing,
+                })
+
+    return decision_points
+
+
+def analyse_decisions_with_llm(
+    job_id: str,
+    tasks: Dict[str, Dict[str, Any]],
+    subtasks_by_task: Dict[str, List[Dict[str, Any]]],
+    relations_map: Dict[str, List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """
+    High-level wrapper:
+
+    1. Find decision subtasks (decision_node == True).
+    2. For each, ask the LLM for additional pass/fail suggestions.
+
+    Returns a dict:
+      {
+        "decision_points": [...],          # list from find_decision_subtasks
+        "llm_suggestions": {               # keyed by task_id::subtask_id
+           "<task_id>::<subtask_id>": { ... LLM JSON ... }
+        }
+      }
+    """
+    if not APPLY_LLM_DECISION_AUGMENTATION:
+        return {"decision_points": [], "llm_suggestions": {}}
+
+    decision_points = find_decision_subtasks(
+        tasks, subtasks_by_task, relations_map)
+    skills_summary = _skills_summary_for_llm()
+
+    suggestions: Dict[str, Any] = {}
+
+    for dp in decision_points:
+        task_id = dp.get("task_id")
+        subtask_id = dp.get("subtask_id")
+        key = f"{task_id}::{subtask_id}"
+
+        try:
+            llm_resp = query_llm_for_decision_routes(
+                job_id=job_id,
+                decision_point=dp,
+                skills_summary=skills_summary,
+            )
+        except Exception as e:
+            print(f"[llm-decision] Error analysing {key}: {e}")
+            llm_resp = None
+
+        if llm_resp:
+            suggestions[key] = llm_resp
+
+    return {
+        "decision_points": decision_points,
+        "llm_suggestions": suggestions,
+    }
+
+
+def query_llm_for_decision_routes(
+    job_id: str,
+    decision_point: Dict[str, Any],
+    skills_summary: Optional[List[Dict[str, Any]]] = None
+) -> Optional[Dict[str, Any]]:
+
+    task = decision_point["task"]
+    subtask = decision_point["subtask"]
+
+    system_prompt = (
+        "You are a workflow decision planner for an automation engine.\n"
+        "You receive ONE decision subtask.\n"
+        "Your job is to propose exactly one failure-handling behaviour.\n\n"
+        "Allowed behaviours:\n"
+        "- retry: re-run the ENTIRE parent task\n"
+        "- human_review: route to a global human review node\n"
+        "- terminate: end workflow immediately\n\n"
+        "Rules:\n"
+        "1. Output MUST be a single JSON object.\n"
+        "2. JSON must contain: task_id, subtask_id, suggested_links.\n"
+        "3. suggested_links MUST be a list with exactly ONE entry.\n"
+        "4. That entry must contain ONE of: retry, human_review, terminate.\n"
+        "5. target_step_id MUST be null (the system will decide the real node).\n"
+        "6. No loops except retry to the parent task.\n"
+        "7. No synthetic → synthetic links.\n"
+        "8. No multiple behaviours.\n"
+        "9. No markdown.\n"
+    )
+
+    user_prompt = {
+        "task_id": decision_point["task_id"],
+        "subtask_id": decision_point["subtask_id"],
+        "task": {
+            "label": task.get("label"),
+            "description": task.get("description"),
+        },
+        "subtask": {
+            "description": subtask.get("description"),
+            "kind": subtask.get("kind"),
+            "skill": subtask.get("skill"),
+        },
+        "skills_summary": skills_summary or [],
+        "notes": "Choose retry OR human_review OR terminate. No combinations."
+    }
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": json.dumps(user_prompt)},
+    ]
+
+    result = ollama_client.chat_json(messages)
+    # Only validate when result is not None to satisfy the validator's non-optional parameter.
+    validated = validate_llm_decision_output(
+        result) if result is not None else None
+    return validated
+
+
+def validate_llm_decision_output(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Validate and sanitize LLM output.
+    Allowed behaviours:
+    - retry (bool)
+    - human_review (bool)
+    - terminate (bool)
+    Only one is allowed. If LLM outputs multiple → fallback to default (human_review).
+
+    target_step_id may be null → synthetic node
+    """
+    try:
+        if not isinstance(result, dict):
+            return None
+
+        task_id = result.get("task_id")
+        subtask_id = result.get("subtask_id")
+        suggested = result.get("suggested_links")
+
+        if not task_id or not subtask_id or not isinstance(suggested, list):
+            return None
+
+        if not suggested:
+            return None
+
+        # use only first suggestion
+        s = suggested[0]
+        behavior_flags = [
+            bool(s.get("retry")),
+            bool(s.get("human_review")),
+            bool(s.get("terminate")),
+        ]
+        behaviors = sum(behavior_flags)
+
+        if behaviors == 0:
+            # fallback to human review
+            s["human_review"] = True
+        elif behaviors > 1:
+            # invalid → fallback
+            s["retry"] = False
+            s["terminate"] = False
+            s["human_review"] = True
+
+        return {
+            "task_id": task_id,
+            "subtask_id": subtask_id,
+            "link": s,
+        }
+
+    except Exception:
+        return None
+
+
+def apply_llm_decision_to_transitions(job_id: str,
+                                      tasks_copy,
+                                      subtasks_copy,
+                                      relations_map,
+                                      decision_points,
+                                      llm_suggestions,
+                                      all_links):
+    """
+    Insert synthetic nodes according to LLM suggestions.
+    Only ONE failure node per decision-subtask.
+    Behaviour chosen by LLM:
+        - retry: connect synthetic → parent task
+        - human_review: connect synthetic → global human review
+        - terminate: synthetic has no outgoing edges
+    """
+
+    synthetic_registry = {}  # (task_id, subtask_id) → synthetic_id
+
+    # Ensure global human review node exists if needed
+    if GLOBAL_HUMAN_REVIEW_NODE not in WORKFLOW_STATE["tasks"][job_id]:
+        WORKFLOW_STATE["tasks"][job_id][GLOBAL_HUMAN_REVIEW_NODE] = {
+            "id": GLOBAL_HUMAN_REVIEW_NODE,
+            "label": "Human Review Required",
+            "description": "LLM-determined manual intervention required.",
+            "skill": "human_review",
+            "created_at": time.time(),
+            "synthetic": True,
+        }
+
+    for dp in decision_points:
+        task_id = dp["task_id"]
+        subtask_id = dp["subtask_id"]
+        key = f"{task_id}::{subtask_id}"
+
+        suggestion = llm_suggestions.get(key)
+        if not suggestion:
+            continue
+
+        s = suggestion["link"]
+
+        # Create synthetic fail node once
+        synthetic_id = synthetic_registry.get(key)
+        if not synthetic_id:
+            synthetic_id = f"synthetic_fail_{task_id}_{subtask_id}"
+            synthetic_registry[key] = synthetic_id
+
+            WORKFLOW_STATE["tasks"][job_id][synthetic_id] = {
+                "id": synthetic_id,
+                "label": f"Failure Handler for {task_id}:{subtask_id}",
+                "description": "LLM-generated failure handler.",
+                "skill": "fail_skill",
+                "synthetic": True,
+                "created_at": time.time(),
+            }
+
+        # Add transition: task → synthetic
+        all_links.append({
+            "source_step_id": task_id,
+            "target_step_id": synthetic_id,
+            "condition_text": s.get("condition_text") or "failure",
+            "outcome_name": s.get("outcome_name") or "fail",
+            "llm_generated": True,
+        })
+
+        # Determine outbound behaviour from synthetic node
+        if s.get("retry"):
+            # retry → entire parent task
+            all_links.append({
+                "source_step_id": synthetic_id,
+                "target_step_id": task_id,
+                "condition_text": "retry",
+                "llm_generated": True,
+            })
+
+        elif s.get("human_review"):
+            all_links.append({
+                "source_step_id": synthetic_id,
+                "target_step_id": GLOBAL_HUMAN_REVIEW_NODE,
+                "condition_text": "human_review",
+                "llm_generated": True,
+            })
+
+        elif s.get("terminate"):
+            # terminate nodes get no outgoing transitions
+            pass
+
+    return all_links
+
+
+def ensure_stable_subtask_id(task_id: str, subtask: Dict[str, Any]) -> str:
+    """
+    Ensures every subtask has a stable, unique ID.
+    Prefer the explicitly-provided ID, else create a stable one.
+    """
+    if subtask.get("id"):
+        return subtask["id"]
+
+    idx = subtask.get("substep_index")
+    if idx is not None:
+        sid = f"{task_id}_sub_{idx}"
+        subtask["id"] = sid
+        return sid
+
+    # fallback (should not happen)
+    sid = f"{task_id}_sub_{int(time.time()*1000)}"
+    subtask["id"] = sid
+    return sid
+
+
+def _drop_bad_synthetic(link):
+    src = link.get("source_step_id", "")
+    tgt = link.get("target_step_id", "")
+    if src.startswith("synthetic_") and tgt.startswith("synthetic_") and not link.get("llm_generated"):
+        return True
+    return False
+
+
+def analyse_transition_pathologies(
+    tasks: Dict[str, Dict[str, Any]],
+    transitions: List[Dict[str, Any]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Inspect transitions and classify 'pathological' edges.
+
+    Returns a dict with lists of edges in each pathology bucket:
+      {
+        "unknown_node_edges": [...],
+        "legacy_synthetic_chains": [...],
+        "human_review_back_edges": [...],
+        "naked_human_review_edges": [...],
+        "synthetic_to_synthetic": [...],
+      }
+    """
+    task_ids = set(tasks.keys())
+    pathologies: Dict[str, List[Dict[str, Any]]] = {
+        "unknown_node_edges": [],
+        "legacy_synthetic_chains": [],
+        "human_review_back_edges": [],
+        "naked_human_review_edges": [],
+        "synthetic_to_synthetic": [],
+    }
+
+    for link in transitions:
+        src = link.get("source_step_id") or ""
+        tgt = link.get("target_step_id") or ""
+        cond = link.get("condition_text")
+        outcome = link.get("outcome_name")
+        llm_generated = bool(link.get("llm_generated"))
+
+        src_exists = src in task_ids
+        tgt_exists = tgt in task_ids
+
+        # 1) Edge that references non-existent nodes
+        if not src_exists or not tgt_exists:
+            pathologies["unknown_node_edges"].append(link)
+
+        is_src_synth = src.startswith("synthetic_")
+        is_tgt_synth = tgt.startswith("synthetic_")
+        is_human = (src == "synthetic_human_review" or tgt ==
+                    "synthetic_human_review")
+        is_fail_src = src.startswith("synthetic_fail_")
+        is_fail_tgt = tgt.startswith("synthetic_fail_")
+
+        # 2) synthetic -> synthetic chains (legacy, especially if not LLM-generated)
+        if is_src_synth and is_tgt_synth:
+            pathologies["synthetic_to_synthetic"].append(link)
+            if not llm_generated:
+                pathologies["legacy_synthetic_chains"].append(link)
+
+        # 3) human_review -> synthetic_fail_* (back edges)
+        if src == "synthetic_human_review" and is_fail_tgt:
+            pathologies["human_review_back_edges"].append(link)
+
+        # 4) 'naked' direct edges to human_review with no condition/outcome
+        if tgt == "synthetic_human_review" and not cond and not outcome and not llm_generated:
+            pathologies["naked_human_review_edges"].append(link)
+
+    return pathologies
+
+
+def _hashable_field(value: Any) -> Any:
+    """
+    Convert arbitrary value into something hashable, suitable for use
+    as part of a set/dict key.
+
+    - Scalars (str, int, float, bool, None) are left as-is.
+    - Lists/dicts/other get JSON-serialised (or str() as a last resort).
+    """
+    if isinstance(value, (str, int, float, bool, type(None))):
+        return value
+    try:
+        return json.dumps(value, sort_keys=True, default=str)
+    except TypeError:
+        return str(value)
+
+
+def clean_transitions(
+    tasks: Dict[str, Dict[str, Any]],
+    transitions: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Apply heuristic clean-up to transitions based on detected pathologies.
+
+    Returns:
+      {
+        "cleaned": [...],     # cleaned transitions
+        "removed": [...],     # edges removed
+        "pathologies": {...}  # raw pathology classification
+      }
+    """
+    pathologies = analyse_transition_pathologies(tasks, transitions)
+    task_ids = set(tasks.keys())
+
+    removed: List[Dict[str, Any]] = []
+    cleaned: List[Dict[str, Any]] = []
+
+    # Build a quick lookup for 'bad' edge objects
+    # (we match by identity here; order preserved)
+    bad_edges = set()
+
+    # Unknown node edges
+    for e in pathologies["unknown_node_edges"]:
+        bad_edges.add(id(e))
+
+    # Legacy synthetic chains + human_review back edges
+    for e in pathologies["legacy_synthetic_chains"]:
+        bad_edges.add(id(e))
+    for e in pathologies["human_review_back_edges"]:
+        bad_edges.add(id(e))
+
+    # Naked direct edges to human_review (we treat as legacy)
+    for e in pathologies["naked_human_review_edges"]:
+        bad_edges.add(id(e))
+
+    # Second pass: drop bad edges, keep the rest, and also drop edges
+    # that reference non-existent nodes as an extra safety net.
+    for link in transitions:
+        src = link.get("source_step_id") or ""
+        tgt = link.get("target_step_id") or ""
+
+        if id(link) in bad_edges:
+            removed.append(link)
+            continue
+
+        if src not in task_ids or tgt not in task_ids:
+            removed.append(link)
+            continue
+
+        cleaned.append(link)
+
+    # Optional: deduplicate transitions by (src, tgt, condition, outcome, llm_generated)
+    seen = set()
+    deduped: List[Dict[str, Any]] = []
+    for link in cleaned:
+        key = (
+            _hashable_field(link.get("source_step_id")),
+            _hashable_field(link.get("target_step_id")),
+            _hashable_field(link.get("condition_text")),
+            _hashable_field(link.get("outcome_name")),
+            bool(link.get("llm_generated")),
+        )
+        if key in seen:
+            removed.append(link)
+            continue
+        seen.add(key)
+        deduped.append(link)
+
+    return {
+        "cleaned": deduped,
+        "removed": removed,
+        "pathologies": pathologies,
+    }
+
+
 # --------------------------------------------------------------------------------------
 #  UI ROUTES
 # --------------------------------------------------------------------------------------
@@ -906,6 +1628,7 @@ def reference_ontology_summary():
     payload = GLOBAL_ONTOLOGY.to_llm_payload()
     return jsonify(payload)
 
+
 # --------------- SET --------------------------------------
 
 
@@ -961,16 +1684,51 @@ def task_update():
 
 @app.route("/subtask-update", methods=["POST"])
 def subtask_update():
-    """Called by n8n Subtask Feedback node."""
+    """
+    Called by the n8n Subtask Feedback node.
+
+    Expects JSON like:
+    {
+      "substep_id": "step_1_1",
+      "substep_index": 0,
+      "description": "Check for existence of daily extract files",
+      "kind": "system" | "human",
+      "skill": "db.check_files",
+      "decision_node": true | false | "true" | "false" | 1 | 0
+    }
+
+    We store a boolean flag `decision_node` on the subtask so that later
+    stages (relations analysis / LLM augmentation) know which nodes
+    are explicit decision points.
+    """
     data = request.get_json(silent=True) or {}
 
     substep_index = data.get("substep_index")
-    description = data.get("description")
-    # NOTE: this was `bladerunner_index` before – leaving as-is,
-    # but you probably want data.get("kind", "system") here.
-    kind = data.get("bladerunner_index", "system")
+    description = data.get("description", "").strip()
+
+    # Prefer new 'kind' field; keep fallback for older payloads.
+    kind = data.get("kind")
+    if not kind:
+        kind = data.get("bladerunner_index", "system")
+    kind = (kind or "system").strip()
+
     raw_skill = (data.get("skill") or "").strip()
     skill = normalise_skill_id(raw_skill)
+
+    # ---- Normalize decision_node to a proper boolean ----
+    raw_decision = data.get("decision_node", False)
+
+    if isinstance(raw_decision, str):
+        lowered = raw_decision.strip().lower()
+        if lowered in {"1", "true", "yes", "y"}:
+            decision_node = True
+        elif lowered in {"0", "false", "no", "n"}:
+            decision_node = False
+        else:
+            # Fallback: treat any non-empty string as True
+            decision_node = bool(lowered)
+    else:
+        decision_node = bool(raw_decision)
 
     with STATE_LOCK:
         job_ids = list(WORKFLOW_STATE["jobs"].keys())
@@ -1002,7 +1760,7 @@ def subtask_update():
         if task_id not in WORKFLOW_STATE["subtasks"][job_id]:
             WORKFLOW_STATE["subtasks"][job_id][task_id] = []
 
-        # Build a single subtask object including diagnostics
+        # Build a single subtask object including diagnostics + decision flag
         subtask = {
             "id": data.get("substep_id"),
             "substep_index": substep_index,
@@ -1010,6 +1768,7 @@ def subtask_update():
             "kind": kind,
             "skill": skill,
             "created_at": time.time(),
+            "decision_node": decision_node,  # <- explicit boolean
         }
 
         diagnostic = validate_skill_for_subtask(skill, subtask)
@@ -1032,34 +1791,69 @@ def subtask_update():
         },
     )
 
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "job_id": job_id, "task_id": task_id, "subtask": subtask})
 
 
 @app.route("/relations", methods=["POST"])
 def relations():
-    """Called by n8n Return Relations node."""
+    """
+    Called by the n8n 'Return Relations' node.
+
+    Payload example:
+    {
+      "links": [
+        {
+          "source_step_id": "task_1",
+          "target_step_id": "task_2",
+          "condition_text": "if all files are valid",
+          "outcome_name": "pass"
+        },
+        ...
+      ]
+    }
+
+    We:
+    - attach these links to the most recent job,
+    - infer any missing linear links between consecutive tasks,
+    - build a relations map,
+    - run LLM analysis over decision subtasks (decision_node=True),
+    - apply LLM-derived transitions,
+    - broadcast updates via SSE,
+    - and return the full structure as JSON.
+    """
     data = request.get_json(silent=True) or {}
     links = data.get("links", [])
 
     with STATE_LOCK:
+        # ----------------- Resolve active job -----------------
         job_ids = list(WORKFLOW_STATE["jobs"].keys())
         job_id = None
+
+        # Prefer most recent job in 'processing' or 'completed' state
         for jid in reversed(job_ids):
-            if WORKFLOW_STATE["jobs"][jid]["status"] in ["processing", "completed"]:
+            status = WORKFLOW_STATE["jobs"][jid].get("status")
+            if status in ("processing", "completed"):
                 job_id = jid
                 break
 
+        # Fallback: last job if none match
         if not job_id and job_ids:
             job_id = job_ids[-1]
 
         if not job_id:
             return jsonify({"error": "No active job"}), 400
 
+        # ----------------- Gather tasks + order -----------------
         tasks = WORKFLOW_STATE["tasks"].get(job_id, {})
+        subtasks = WORKFLOW_STATE["subtasks"].get(job_id, {})
+
         task_list = sorted(
-            tasks.items(), key=lambda x: x[1].get("created_at", 0))
+            tasks.items(),
+            key=lambda x: x[1].get("created_at", 0),
+        )
         task_ids = [task_id for task_id, _ in task_list]
 
+        # ----------------- Track existing connections -----------------
         existing_connections = set()
         for link in links:
             src = link.get("source_step_id")
@@ -1067,58 +1861,123 @@ def relations():
             if src and tgt:
                 existing_connections.add((src, tgt))
 
-        inferred_links = []
+        # ----------------- Infer missing linear links -----------------
+        inferred_links: List[Dict[str, Any]] = []
         for i in range(len(task_ids) - 1):
             current_task = task_ids[i]
             next_task = task_ids[i + 1]
 
-            has_outgoing = any(link.get("source_step_id") ==
-                               current_task for link in links)
+            has_outgoing = any(
+                link.get("source_step_id") == current_task
+                for link in links
+            )
 
             if not has_outgoing and (current_task, next_task) not in existing_connections:
                 inferred_link = {
                     "source_step_id": current_task,
                     "target_step_id": next_task,
                     "condition_text": None,
-                    "outcome_name": None
+                    "outcome_name": None,
                 }
                 inferred_links.append(inferred_link)
                 existing_connections.add((current_task, next_task))
 
-        all_links = links + inferred_links
+        # ----------------- Base transitions -----------------
+        all_links: List[Dict[str, Any]] = links + inferred_links
 
-        WORKFLOW_STATE["transitions"][job_id] = all_links
-        WORKFLOW_STATE["jobs"][job_id]["status"] = "completed"
-
-        relations_map = {}
+        # ----------------- Initial relations map -----------------
+        relations_map: Dict[str, List[Dict[str, Any]]] = {}
         for link in all_links:
             src = link.get("source_step_id")
-            if src not in relations_map:
-                relations_map[src] = []
-            relations_map[src].append({
+            if not src:
+                continue
+            relations_map.setdefault(src, []).append({
                 "target_step_id": link.get("target_step_id"),
                 "condition_text": link.get("condition_text"),
                 "outcome_name": link.get("outcome_name"),
-                "inferred": link in inferred_links
+                "inferred": link in inferred_links,
+                "llm_generated": link.get("llm_generated", False),
             })
 
-        tasks_copy = dict(WORKFLOW_STATE["tasks"].get(job_id, {}))
+        # Snapshots for LLM + response
+        tasks_copy = dict(tasks)
+        subtasks_copy = dict(subtasks)
 
+        # ----------------- Decision points -----------------
+        decision_points = find_decision_subtasks(
+            tasks_copy,
+            subtasks_copy,
+            relations_map,
+        )
+
+        llm_suggestions: Dict[str, Any] = {}
+        for dp in decision_points:
+            # Ensure a stable subtask ID
+            dp_sub_id = ensure_stable_subtask_id(dp["task_id"], dp["subtask"])
+            dp["subtask_id"] = dp_sub_id
+            suggestion = query_llm_for_decision_routes(job_id, dp)
+            if suggestion:
+                key = f"{dp['task_id']}::{dp_sub_id}"
+                llm_suggestions[key] = suggestion
+
+        # ----------------- Apply LLM transitions -----------------
+        all_links = apply_llm_decision_to_transitions(
+            job_id=job_id,
+            tasks_copy=tasks_copy,
+            subtasks_copy=subtasks_copy,
+            relations_map=relations_map,
+            decision_points=decision_points,
+            llm_suggestions=llm_suggestions,
+            all_links=all_links,
+        )
+
+        good_links = [l for l in all_links if not _drop_bad_synthetic(l)]
+        cleanup_result = clean_transitions(tasks_copy, good_links)
+        good_links = cleanup_result["cleaned"]
+        # ----------------- Persist transitions & mark job complete -----------------
+        WORKFLOW_STATE["transitions"][job_id] = good_links
+        WORKFLOW_STATE["jobs"][job_id]["status"] = "completed"
+
+    # ----------------- Outside lock: rebuild final relations map -----------------
+    final_relations: Dict[str, List[Dict[str, Any]]] = {}
+    for link in good_links:
+        src = link.get("source_step_id")
+        if not src:
+            continue
+        final_relations.setdefault(src, []).append(link)
+
+    # ----------------- SSE notifications -----------------
     broadcast_sse_event("relations_update", {
         "job_id": job_id,
-        "relations": relations_map,
-        "links": all_links,
-        "inferred_count": len(inferred_links)
+        "relations": final_relations,
+        "links": good_links,
+        "inferred_count": len(inferred_links),
+        "decision_points": decision_points,
+        "llm_suggestions": llm_suggestions,
     })
+
+    broadcast_sse_event("decision_update", {
+        "job_id": job_id,
+        "decision_points": decision_points,
+        "llm_suggestions": llm_suggestions,
+    })
+
+    force_graph_refresh(job_id)
 
     broadcast_sse_event("job_complete", {"job_id": job_id})
 
+    # ----------------- HTTP response (what n8n sees) -----------------
     return jsonify({
         "ok": True,
-        "tasks": tasks_copy,
-        "relations": relations_map,
-        "inferred_links": inferred_links,
-        "total_links": len(all_links)
+        # "job_id": job_id,
+        # "tasks": tasks_copy,
+        # "subtasks": subtasks_copy,
+        # "relations": final_relations,
+        # "links": good_links,
+        # "inferred_links": inferred_links,
+        # "total_links": len(good_links),
+        # "decision_points": decision_points,
+        # "llm_suggestions": llm_suggestions,
     })
 
 
@@ -1246,6 +2105,81 @@ def broadcast_sse_event(event_type: str, data: dict):
         for client_id in dead_clients:
             SSE_CLIENTS.pop(client_id, None)
 
+
+def build_relations_map_from_transitions(
+    transitions: List[Dict[str, Any]],
+    inferred_links: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Build a relations map from a flat list of transitions.
+
+    relations_map: source_step_id -> list of outgoing edges, each of form:
+      {
+        "source_step_id": str,
+        "target_step_id": str,
+        "condition_text": str | None,
+        "outcome_name": str | None,
+        "inferred": bool,
+        "llm_generated": bool,
+      }
+    """
+    inferred_links = inferred_links or []
+    inferred_ids = {id(link) for link in inferred_links}
+
+    relations_map: Dict[str, List[Dict[str, Any]]] = {}
+
+    for link in transitions:
+        src = link.get("source_step_id")
+        if not src:
+            continue
+
+        is_inferred = id(link) in inferred_ids or bool(link.get("inferred"))
+        rel_entry = {
+            "source_step_id": src,
+            "target_step_id": link.get("target_step_id"),
+            "condition_text": link.get("condition_text"),
+            "outcome_name": link.get("outcome_name"),
+            "inferred": is_inferred,
+            "llm_generated": bool(link.get("llm_generated")),
+        }
+
+        relations_map.setdefault(src, []).append(rel_entry)
+
+    return relations_map
+
+
+def force_graph_refresh(job_id: str) -> None:
+    """
+    Rebuild a full graph snapshot (tasks, subtasks, transitions, relations)
+    for the given job_id and broadcast it as an SSE event so the UI
+    can forcibly refresh the visualisation.
+
+    Assumes:
+      - WORKFLOW_STATE global
+      - STATE_LOCK
+      - broadcast_sse_event(event_name, payload)
+    """
+    with STATE_LOCK:
+        job = WORKFLOW_STATE["jobs"].get(job_id, {})
+        tasks = WORKFLOW_STATE["tasks"].get(job_id, {})
+        subtasks = WORKFLOW_STATE["subtasks"].get(job_id, {})
+        transitions = WORKFLOW_STATE["transitions"].get(job_id, [])
+
+        relations = build_relations_map_from_transitions(transitions)
+
+        snapshot = {
+            "job_id": job_id,
+            "job": job,
+            "tasks": tasks,
+            "subtasks": subtasks,
+            "transitions": transitions,
+            "relations": relations,
+        }
+
+    # Outside the lock: send to all connected clients
+    broadcast_sse_event("graph_update", snapshot)
+
+
 # --------------------------------------------------------------------------------------
 # ENHANCED N8N WORKFLOW BUILDER
 # --------------------------------------------------------------------------------------
@@ -1267,19 +2201,31 @@ def build_n8n_workflow(job_id: str):
         return jsonify({"error": "No tasks found for job_id"}), 404
 
     try:
+        # ---------- NEW: LLM-based node planning using setup context ----------
+        planned_subtasks = augment_tasks_with_llm_node_planning(
+            job_id=job_id,
+            tasks=tasks,
+            subtasks=subtasks,
+        )
+
+        # ---------- EXISTING: build workflow from (possibly) enriched state ---
         workflow = build_workflow_from_state(
-            job_id, tasks, subtasks, transitions)
+            job_id,
+            tasks,
+            planned_subtasks,
+            transitions,
+        )
 
         output_path = f"outputs/workflow_{job_id}.json"
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             json.dump(workflow.to_json(), f, indent=2)
 
         return jsonify({
             "ok": True,
             "workflow": workflow.to_json(),
-            "file": output_path
+            "file": output_path,
         })
 
     except Exception as e:
@@ -1911,6 +2857,7 @@ def update_config():
             data["error_handling_defaults"])
 
     return jsonify({"ok": True, "config": CONFIG})
+
 
 # --------------------------------------------------------------------------------------
 # DEBUG ENDPOINTS

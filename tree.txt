@@ -1,0 +1,36 @@
+.
+├── config
+│   ├── reference_ontology.json
+│   └── skills.json
+├── knowledge
+│   ├── db_manager.py
+│   ├── ont_manager.py
+│   └── __pycache__
+│       ├── db_manager.cpython-311.pyc
+│       └── ont_manager.cpython-311.pyc
+├── n8n
+│   └── Llama Builder - Combined (Main + Sub-workflow).json
+├── outputs
+│   ├── state_26949714-b98d-482c-8757-f06b6786efe9.json
+│   ├── state_3e3a6937-51ad-4344-8cc4-31c769b10366.json
+│   ├── state_5fec085f-5cc4-40ea-b0da-af472b54ad57.json
+│   ├── state_7567c0b3-fec7-4524-ba6e-71bf4cbe6684.json
+│   ├── state_99380f9b-6063-4f43-aae9-7f1ab19f2979.json
+│   ├── workflow_26949714-b98d-482c-8757-f06b6786efe9.json
+│   ├── workflow_38e639cb-a0b7-43ee-ad20-7e12e5354aa4.json
+│   ├── workflow_3e3a6937-51ad-4344-8cc4-31c769b10366.json
+│   ├── workflow_5fec085f-5cc4-40ea-b0da-af472b54ad57.json
+│   ├── workflow_7567c0b3-fec7-4524-ba6e-71bf4cbe6684.json
+│   ├── workflow_99380f9b-6063-4f43-aae9-7f1ab19f2979.json
+│   └── workflow_c5677870-492e-4797-881d-c5f8dd49090a.json
+├── __pycache__
+│   ├── db_manager.cpython-311.pyc
+│   └── ont_manager.cpython-311.pyc
+├── README.md
+├── requirements.txt
+├── server.py
+├── static
+│   └── index.html
+└── tree.txt
+
+7 directories, 26 files

@@ -23,6 +23,7 @@
   // Environment variables for external service connectivity
   "remoteEnv": {
     "N8N_BUILDER_URL": "http://localhost:5678/webhook/wf_builder_agent",
+    //if building experimentally, use: "http://localhost:5678/webhook-test/wf_builder_agent",
     "OLLAMA_URL": "http://localhost:11434/api/chat",
     "OLLAMA_MODEL": "llama3"
   },

@@ -3,631 +3,6 @@
   "nodes": [
     {
       "parameters": {
-        "httpMethod": "POST",
-        "path": "wf_builder_agent",
-        "options": {
-          "responseData": "={ \"accepted\": true }"
-        }
-      },
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2.1,
-      "position": [
-        1264,
-        -880
-      ],
-      "id": "97e9aea2-05dc-4a80-969c-956e52ce5661",
-      "name": "Webhook",
-      "webhookId": "9bc4da2b-061a-4f89-81f3-2953e4a9cdce",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://localhost:11434/api/chat",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  model: \"llama3\",\n  messages: [\n    {\n      role: \"system\",\n      content:\n        \"You are an ontology normalisation assistant for industrial workflows.\\n\" +\n        \"You will receive:\\n\" +\n        \"1) A candidate ontology skeleton in JSON text (objects, processes, properties, events).\\n\" +\n        \"2) Up to four source documents, clearly separated:\\n\" +\n        \"   [WORKFLOW_SPEC]  - narrative workflow description\\n\" +\n        \"   [WPS]            - formal Procedure Specification (if provided)\\n\" +\n        \"   [DATASHEET]      - resource datasheet(s) (if provided)\\n\" +\n        \"[ONTOLOGY_SPEC]  - pre-existing ontology (if provided)\\n\\n\" + \n        \"Your job is to:\\n\" +\n        \"- Merge synonyms and duplicates across all documents;\\n\" +\n        \"-Identify possible pre-existing ontological elements for objects and processes;\\n\" + \n        \"- Where this is not possible, create stable canonical IDs for objects and processes;\\n\" +\n        \"- Add basic relations using simple types such as:\\n\" +\n        \"    uses, acts_on, part_of, located_in, precondition_of, produces;\\n\" +\n        \"- Maintain the four top-level categories: objects, processes, properties, events.\\n\\n\" +\n        \"Treat WORKFLOW_SPEC as the primary source of intent.\\n\" +\n        \"Use WPS as authoritative for required steps and safety constraints.\\n\" +\n        \"Use DATASHEET only to enrich object properties and constraints.\\n\\n\" +\n        \"Output ONLY valid JSON with keys: objects, processes, properties, events, relations.\\n\" +\n        \"Do NOT include any explanatory text or additional keys.\"\n    },\n    {\n      role: \"user\",\n      content:\n        \"Here is the extracted ontology skeleton (JSON text):\\n\\n\" +\n        $json.message.content + \"\\n\\n\" +\n\n        \"Now here are the source documents:\\n\\n\" +\n        \"[WORKFLOW_SPEC]\\n\" +\n        $node[\"Webhook\"].json.body.spec_text + \"\\n\\n\" +\n\n        \"[WPS]\\n\" +\n        ($node[\"Webhook\"].json.body.wps_text || \"NOT PROVIDED\") + \"\\n\\n\" +\n\n        \"[DATASHEET]\\n\" +\n        ($node[\"Webhook\"].json.body.datasheet_text || \"NOT PROVIDED\") + \"\\n\\n\" +\n        \"[ONTOLOGY_SPEC]\\n\" +\n        JSON.stringify($node[\"Extract Objects\"].json) \n    }\n  ],\n  stream: false\n}) }}\n",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        2576,
-        -1296
-      ],
-      "id": "7f0fdf3e-cfd2-4aa5-abb7-683dfb982a06",
-      "name": "Ontology Normalisation",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://localhost:11434/api/chat",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  model: \"llama3\",\n  stream: false,\n  temperature: 0,\n  messages: [\n    {\n      role: \"system\",\n      content:\n        \"You are a classifier. You must choose ONE skill_id from a fixed list.\\n\" +\n        \"The user will give you:\\n\" +\n        \"1) A list of skills with id, description, and category.\\n\" +\n        \"2) One workflow step (label, description).\\n\" +\n        \"\\n\" +\n        \"Your job: pick the SINGLE skill_id that best matches what the step is doing.\\n\" +\n        \"Prefer skills whose category and description align with the step.\\n\" +\n        \"\\n\" +\n        \"Output rules:\\n\" +\n        \"- Output ONLY the chosen skill_id string.\\n\" +\n        \"- Do NOT explain. Do NOT add any other text.\\n\" +\n        \"- If absolutely no skill matches, output EXACTLY: NONE\"\n    },\n    {\n      role: \"user\",\n      content:\n        // 1. Dynamic Skills List\n        \"Skills:\\n\" +\n        $('Fetch Skills').item.json.skills\n          .map(s => `${s.id} [${s.category}]: ${s.description}`)\n          .join(\"\\n\") +\n        \"\\n\\n\" +\n\n        // 2. Step metadata\n        \"Step:\\n\" +\n        \"id: \" + $json.step_index + \"\\n\" +\n        \"label: \" + $json.step.label + \"\\n\" +\n        \"description: \" + $json.step.description + \"\\n\\n\" +\n\n        // 3. Instruction\n        \"Choose ONE skill_id from the list above.\"\n    }\n  ]\n}) }}\n",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        4736,
-        -592
-      ],
-      "id": "b556284e-aecb-406b-97b0-2a7550f36a6d",
-      "name": "Extract Tasks",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://localhost:11434/api/chat",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  model: \"llama3\",\n  messages: [\n    {\n      role: \"system\",\n      content:\n        \"You are a rule extraction engine for an industrial ontology.\\n\" +\n        \"You will receive:\\n\" +\n        \"1) A base ontology in JSON text (objects, processes, properties, relations).\\n\" +\n        \"2) Up to three source documents, clearly separated as:\\n\" +\n        \"   [WORKFLOW_SPEC]  - narrative workflow description\\n\" +\n        \"   [WPS]            - formal Welding Procedure Specification (if provided)\\n\" +\n        \"   [DATASHEET]      - tool/material datasheet(s) (if provided)\\n\\n\" +\n        \"Your job is to extract a set of formal rules of the following types:\\n\" +\n        \"  - safety\\n\" +\n        \"  - operational_limit\\n\" +\n        \"  - precondition\\n\" +\n        \"  - postcondition\\n\" +\n        \"  - invariant\\n\\n\" +\n        \"DEFINITIONS\\n\" +\n        \"- precondition: must be true BEFORE a process or step starts.\\n\" +\n        \"- postcondition: becomes true AFTER a process or step completes.\\n\" +\n        \"- safety: any rule whose main purpose is to protect people, equipment, or environment.\\n\" +\n        \"- operational_limit: numeric or symbolic operating bounds (for example ranges, maxima, minima, rated capacities).\\n\" +\n        \"- invariant: a condition that must remain true THROUGHOUT a process or across multiple steps.\\n\" +\n        \"  * Look for wording such as: \\\"at all times\\\", \\\"throughout\\\", \\\"must always\\\", \\\"shall remain\\\", \\\"must not at any time\\\", \\\"never\\\".\\n\" +\n        \"  * Typical examples: restrictions on properties or behaviours, forbidden actions, conditions that must be maintained.\\n\\n\" +\n        \"SOURCES\\n\" +\n        \"- Treat [WPS] as the authoritative source for required steps, required sequences and safety constraints.\\n\" +\n        \"- Treat [WORKFLOW_SPEC] as contextual, describing how operators actually perform or describe the steps.\\n\" +\n        \"- Treat [DATASHEET] as the main source of numeric/technical limits and invariants over parameters (for example current, voltage, pressure, speed, temperature).\\n\" +\n        \"- When possible, turn numeric ranges or absolute limits from WPS/DATASHEET into operational_limit or invariant rules.\\n\\n\" +\n        \"MAPPING TO ONTOLOGY\\n\" +\n        \"- Rules MUST reference ontology IDs exactly as they appear in the ontology JSON.\\n\" +\n        \"- When defining an invariant or safety rule, link it to the relevant ontology process and/or objects.\\n\" +\n        \"- If the document text uses free-form wording, map it to the closest ontology process/object/property and use that ID.\\n\\n\" +\n        \"OUTPUT FORMAT\\n\" +\n        \"Output ONLY valid JSON in the form:\\n\" +\n        \"{ \\\"rules\\\": [ ... ] }\\n\" +\n        \"Each element in \\\"rules\\\" must be a JSON object with at least:\\n\" +\n        \"  - \\\"rule_type\\\": one of [\\\"safety\\\", \\\"operational_limit\\\", \\\"precondition\\\", \\\"postcondition\\\", \\\"invariant\\\"],\\n\" +\n        \"  - \\\"description\\\": human-readable text of the rule,\\n\" +\n        \"  - \\\"applies_to\\\": an array of ontology IDs (objects/processes/properties/relations) that this rule constrains.\\n\" +\n        \"You MAY add other fields (for example \\\"source_document\\\", \\\"source_span\\\", \\\"parameters\\\") if helpful, but do NOT add any other top-level keys besides \\\"rules\\\".\\n\" +\n        \"Do NOT include any free text outside the JSON.\"\n    },\n    {\n      role: \"user\",\n      content:\n        \"Ontology (JSON text):\\n\\n\" +\n        $node[\"Ontology Normalisation\"].json.message.content +\n        \"\\n\\n\" +\n        \"Source documents:\\n\\n\" +\n        \"[WORKFLOW_SPEC]\\n\" +\n        $node[\"Webhook\"].json.body.spec_text + \"\\n\\n\" +\n        \"[WPS]\\n\" +\n        ($node[\"Webhook\"].json.body.wps_text || \"NOT PROVIDED\") + \"\\n\\n\" +\n        \"[DATASHEET]\\n\" +\n        ($node[\"Webhook\"].json.body.datasheet_text || \"NOT PROVIDED\")\n    }\n  ],\n  stream: false\n}) }}\n",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        3296,
-        -1280
-      ],
-      "id": "463e82aa-4e28-466f-ab49-58bcffc5b4fe",
-      "name": "Extract Rules",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://localhost:11434/api/chat",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify(\n\n{\n  model: \"llama3\",\n  messages: [\n    {\n      role: \"system\",\n      content:\n        \"You are a workflow text parser.\\n\" +\n        \"\\n\" +\n        \"You receive:\\n\" +\n        \"- Original workflow specification text written for humans (numbered steps, bullets, paragraphs or mixed prose).\\n\" +\n        \"- Optionally, a CURRENT WORKFLOW JSON (steps + transitions) representing the last parsed version.\\n\" +\n        \"- Optionally, REFINEMENT INSTRUCTIONS describing corrections or changes requested by a critic or by the user.\\n\" +\n        \"\\n\" +\n        \"Your job is to output a STRUCTURED WORKFLOW. You must NOT use any ontology identifiers.\\n\" +\n        \"\\n\" +\n        \"BEHAVIOUR WITH CURRENT WORKFLOW AND REFINEMENTS\\n\" +\n        \"- If CURRENT WORKFLOW is NOT PROVIDED or clearly empty, parse the specification text from scratch as a new workflow.\\n\" +\n        \"- If CURRENT WORKFLOW IS PROVIDED:\\n\" +\n        \"  * Treat it as your starting point.\\n\" +\n        \"  * Apply the REFINEMENT INSTRUCTIONS and any new information in the specification text.\\n\" +\n        \"  * Preserve step IDs where the step meaning is unchanged.\\n\" +\n        \"  * Update labels, descriptions and connections only where required by the refinements.\\n\" +\n        \"  * If refinements ask for new steps, add new step IDs (e.g. stepX_new) without reusing existing IDs.\\n\" +\n        \"  * If refinements ask to remove steps, remove them and any transitions that reference them.\\n\" +\n        \"- If there is a direct conflict between the old workflow and the specification text, the specification text takes precedence.\\n\" +\n        \"- If there is a direct conflict between the old workflow and the REFINEMENT INSTRUCTIONS, the REFINEMENT INSTRUCTIONS take precedence.\\n\" +\n        \"\\n\" +\n        \"MAIN TASK\\n\" +\n        \"You must ensure the FINAL RESULT is a single coherent workflow, even when refinements were applied.\\n\" +\n        \"You must:\\n\" +\n        \"1) Identify individual workflow steps in the order they occur.\\n\" +\n        \"2) For each step, ensure you have:\\n\" +\n        \"   - A short human-readable label (label).\\n\" +\n        \"   - A detailed description in your own words.\\n\" +\n        \"   - Any preconditions, postconditions, and invariants that are implied by the text or by refinements.\\n\" +\n        \"3) Identify decision points and outcomes:\\n\" +\n        \"   - If the text or refinements describe alternative paths, identify these as possible_outcomes for the relevant step.\\n\" +\n        \"4) Build a step-level graph via transitions between steps, including conditional branches.\\n\" +\n        \"\\n\" +\n        \"SCHEMA\\n\" +\n        \"Return ONLY a JSON object with this structure:\\n\" +\n        \"{\\n\" +\n        \"  \\\"steps\\\": [\\n\" +\n        \"    {\\n\" +\n        \"      \\\"id\\\": string,                      // e.g. \\\"step1\\\", \\\"step2\\\"\\n\" +\n        \"      \\\"label\\\": string,                   // short name, e.g. \\\"Visual inspection\\\"\\n\" +\n        \"      \\\"description\\\": string,             // full description\\n\" +\n        \"      \\\"preconditions_text\\\": string[],    // textual, may be empty\\n\" +\n        \"      \\\"postconditions_text\\\": string[],   // textual, may be empty\\n\" +\n        \"      \\\"invariants_text\\\": string[],       // textual, may be empty\\n\" +\n        \"      \\\"possible_outcomes\\\": [             // may be empty if no decisions\\n\" +\n        \"        {\\n\" +\n        \"          \\\"name\\\": string,                // machine-friendly, e.g. \\\"defects_found\\\"\\n\" +\n        \"          \\\"description\\\": string,         // human description\\n\" +\n        \"          \\\"is_terminal\\\": boolean         // true if this outcome ends the workflow\\n\" +\n        \"        }\\n\" +\n        \"      ]\\n\" +\n        \"    }\\n\" +\n        \"  ],\\n\" +\n        \"  \\\"transitions\\\": [\\n\" +\n        \"    {\\n\" +\n        \"      \\\"source_step_id\\\": string,          // must match a step id\\n\" +\n        \"      \\\"target_step_id\\\": string,          // must match a step id\\n\" +\n        \"      \\\"condition_text\\\": string | null,   // textual condition; omit or null if unconditional\\n\" +\n        \"      \\\"outcome_name\\\": string | null      // name of a possible_outcome, or omit/null\\n\" +\n        \"    }\\n\" +\n        \"  ]\\n\" +\n        \"}\\n\" +\n        \"\\n\" +\n        \"RULES\\n\" +\n        \"- Treat words like \\\"if\\\", \\\"when\\\", \\\"unless\\\", \\\"otherwise\\\", \\\"only if\\\", \\\"in that case\\\", \\\"then\\\", \\\"else\\\" as decision cues.\\n\" +\n        \"- If there are clearly different paths, you MUST create possible_outcomes and transitions with condition_text.\\n\" +\n        \"- Do NOT invent domain-specific semantics; stay close to the original wording and to the refinements.\\n\" +\n        \"- If the text is purely linear with no decisions, you may produce transitions with null/omitted condition_text and empty possible_outcomes.\\n\" +\n        \"- The final JSON must be syntactically valid and contain no comments or extra text.\\n\" +\n        \"- Always output the FULL UPDATED workflow, not just a diff.\"\n    },\n    {\n      role: \"user\",\n      content:\n        \"Original workflow specification text:\\n\\n\" +\n        $node[\"Webhook\"].json.body.spec_text +\n        \"\\n\\nCurrent workflow JSON (may be 'NOT PROVIDED' or empty):\\n\\n\" +\n        ($json.current_workflow || \"NOT PROVIDED\") +\n        \"\\n\\nRefinement instructions (may be 'NONE' or empty):\\n\\n\" +\n        ($json.refinement_instructions || \"NONE\")\n    }\n  ],\n  stream: false\n}\n\n) }}\n",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        4192,
-        -1312
-      ],
-      "id": "c6976f64-eb7f-441b-a458-b91fe2af289f",
-      "name": "Task Partition",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "3ec8b2dc-eff6-4b03-b9b0-9f5af5fe1daa",
-              "name": "iteration_number",
-              "value": 0,
-              "type": "number"
-            },
-            {
-              "id": "9f9a3f48-1b90-464b-a3af-4660d6d8d697",
-              "name": "refinement_instructions",
-              "value": "\"\"",
-              "type": "string"
-            },
-            {
-              "id": "4489575d-7a71-4326-a1bb-31eeff65ea31",
-              "name": "current_ontology",
-              "value": "\"\"",
-              "type": "string"
-            },
-            {
-              "id": "10c6a244-b276-46b4-ab0d-aa2a30171ffe",
-              "name": "current_workflow",
-              "value": "\"\"",
-              "type": "string"
-            },
-            {
-              "id": "3a05e370-5339-427d-a074-0a8617ff1261",
-              "name": "clean_ontology",
-              "value": "\"\"",
-              "type": "string"
-            },
-            {
-              "id": "bd1d90a5-977b-4614-9f2f-451468bee6c6",
-              "name": "clean_rules",
-              "value": "\"\"",
-              "type": "string"
-            },
-            {
-              "id": "ae3220ba-1e8d-4b46-9eb9-38ae9d77a9f0",
-              "name": "prior_skills",
-              "value": "\"{   \"skills\": [     {       \"id\": \"filesystem.check_expected_files\",       \"label\": \"Check expected files in folder\",       \"category\": \"filesystem\",       \"description\": \"List files in a given input folder, compare against expected patterns, and set a state indicating whether all expected files are present.\",       \"io\": {         \"inputs\": [           {             \"name\": \"input_folder\",             \"kind\": \"ontology_object\",             \"type\": \"folder\",             \"required\": true,             \"description\": \"Folder that should contain the daily extract files.\"           },           {             \"name\": \"expected_patterns\",             \"kind\": \"config\",             \"type\": \"string_list\",             \"required\": true,             \"description\": \"List of filename patterns or exact filenames expected for this batch.\"           }         ],         \"outputs\": [           {             \"name\": \"inputs_ok\",             \"kind\": \"state\",             \"type\": \"boolean\",             \"state_name\": \"inputs_OK\",             \"description\": \"True if all expected files are present and correctly named.\"           },           {             \"name\": \"missing_files\",             \"kind\": \"payload\",             \"type\": \"file_list\",             \"description\": \"List of missing or misnamed files, if any.\"           }         ]       },       \"completion\": {         \"mode\": \"node_success\",         \"primary_state\": \"inputs_OK\"       },       \"n8n_template\": {         \"node_type\": \"n8n-nodes-base.executeCommand\",         \"operation\": \"runCommand\",         \"default_parameters\": {           \"command\": \"python\",           \"arguments\": [\"check_expected_files.py\", \"{{input_folder}}\", \"{{expected_patterns}}\"]         },         \"output_mapping\": {           \"json.inputs_ok\": \"inputs_ok\",           \"json.missing_files\": \"missing_files\"         }       },       \"tags\": [\"get\", \"filesystem\", \"validation\", \"state_set\"]     },      {       \"id\": \"etl.flag_invalid_files\",       \"label\": \"Flag invalid or suspicious files in batch log\",       \"category\": \"etl\",       \"description\": \"Inspect a list of files to detect missing, misnamed, zero-byte, or corrupt files, and write flags into the batch log for each problematic file.\",       \"io\": {         \"inputs\": [           {             \"name\": \"file_list\",             \"kind\": \"payload\",             \"type\": \"file_list\",             \"required\": true,             \"description\": \"List of files identified for this batch.\"           },           {             \"name\": \"batch_id\",             \"kind\": \"state\",             \"type\": \"batch_id\",             \"required\": true,             \"description\": \"Batch identifier used as key in the batch log.\"           }         ],         \"outputs\": [           {             \"name\": \"files_flagged\",             \"kind\": \"state\",             \"type\": \"boolean\",             \"state_name\": \"files_flagged\",             \"description\": \"True if any files have been flagged for further cleaning.\"           },           {             \"name\": \"flagged_files\",             \"kind\": \"payload\",             \"type\": \"file_list\",             \"description\": \"List of files that were flagged.\"           }         ]       },       \"completion\": {         \"mode\": \"node_success\",         \"primary_state\": \"files_flagged\"       },       \"n8n_template\": {         \"node_type\": \"n8n-nodes-base.httpRequest\",         \"operation\": \"POST\",         \"default_parameters\": {           \"url\": \"http://etl-service/flag_invalid_files\",           \"jsonParameters\": true,           \"options\": {},           \"bodyParametersJson\": \"{{ { \\\"batch_id\\\": $json[\\\"batch_id\\\"], \\\"files\\\": $json[\\\"file_list\\\"] } }}\"         },         \"output_mapping\": {           \"json.files_flagged\": \"files_flagged\",           \"json.flagged_files\": \"flagged_files\"         }       },       \"tags\": [\"set\", \"transform\", \"batch_log\"]     },      {       \"id\": \"etl.basic_cleaning\",       \"label\": \"Run basic cleaning on flagged files\",       \"category\": \"etl\",       \"description\": \"Run a lightweight cleaner to remove blank rows, fix delimiters, and normalise timestamps on a list of files.\",       \"io\": {         \"inputs\": [           {             \"name\": \"flagged_files\",             \"kind\": \"payload\",             \"type\": \"file_list\",             \"required\": true,             \"description\": \"Files that require cleaning.\"           }         ],         \"outputs\": [           {             \"name\": \"cleaned_files\",             \"kind\": \"state\",             \"type\": \"boolean\",             \"state_name\": \"cleaned_files\",             \"description\": \"True when cleaning of the flagged files has completed successfully.\"           },           {             \"name\": \"cleaned_file_list\",             \"kind\": \"payload\",             \"type\": \"file_list\",             \"description\": \"List of cleaned files, possibly with updated paths.\"           }         ]       },       \"completion\": {         \"mode\": \"node_success\",         \"primary_state\": \"cleaned_files\"       },       \"n8n_template\": {         \"node_type\": \"n8n-nodes-base.executeCommand\",         \"operation\": \"runCommand\",         \"default_parameters\": {           \"command\": \"python\",           \"arguments\": [\"basic_cleaning.py\", \"{{flagged_files}}\"]         },         \"output_mapping\": {           \"json.cleaned_files\": \"cleaned_files\",           \"json.cleaned_file_list\": \"cleaned_file_list\"         }       },       \"tags\": [\"transform\", \"etl\"]     },      {       \"id\": \"etl.structural_validation\",       \"label\": \"Run schema-based structural validation\",       \"category\": \"validation\",       \"description\": \"Validate cleaned files against a defined schema, and isolate any rows or files that fail structural checks.\",       \"io\": {         \"inputs\": [           {             \"name\": \"cleaned_file_list\",             \"kind\": \"payload\",             \"type\": \"file_list\",             \"required\": true,             \"description\": \"Files that have passed basic cleaning.\"           },           {             \"name\": \"schema_definition\",             \"kind\": \"ontology_object\",             \"type\": \"schema\",             \"required\": true,             \"description\": \"Schema object describing required columns and types.\"           }         ],         \"outputs\": [           {             \"name\": \"validation_passed\",             \"kind\": \"state\",             \"type\": \"boolean\",             \"state_name\": \"validation_passed\",             \"description\": \"True if all files pass structural validation.\"           },           {             \"name\": \"requires_investigation\",             \"kind\": \"state\",             \"type\": \"boolean\",             \"state_name\": \"requires_investigation\",             \"description\": \"True if anomalies remain after validation.\"           },           {             \"name\": \"quarantine_files\",             \"kind\": \"payload\",             \"type\": \"file_list\",             \"description\": \"Files or rows moved to quarantine due to schema issues.\"           }         ]       },       \"completion\": {         \"mode\": \"node_success\",         \"primary_state\": \"validation_passed\"       },       \"n8n_template\": {         \"node_type\": \"n8n-nodes-base.httpRequest\",         \"operation\": \"POST\",         \"default_parameters\": {           \"url\": \"http://etl-service/structural_validate\",           \"jsonParameters\": true,           \"bodyParametersJson\": \"{{ { \\\"files\\\": $json[\\\"cleaned_file_list\\\"], \\\"schema\\\": $json[\\\"schema_definition\\\"] } }}\"         },         \"output_mapping\": {           \"json.validation_passed\": \"validation_passed\",           \"json.requires_investigation\": \"requires_investigation\",           \"json.quarantine_files\": \"quarantine_files\"         }       },       \"tags\": [\"validation\", \"state_set\"]     },      {       \"id\": \"batch_state.mark_validated\",       \"label\": \"Mark batch as validated and ready for ingestion\",       \"category\": \"batch_state\",       \"description\": \"Update the batch status in the operational database to 'validated and ready for ingestion'.\",       \"io\": {         \"inputs\": [           {             \"name\": \"batch_id\",             \"kind\": \"state\",             \"type\": \"batch_id\",             \"required\": true,             \"description\": \"Identifier of the batch.\"           }         ],         \"outputs\": [           {             \"name\": \"validated\",             \"kind\": \"state\",             \"type\": \"boolean\",             \"state_name\": \"validated\",             \"description\": \"True if the batch was successfully marked as validated.\"           }         ]       },       \"completion\": {         \"mode\": \"node_success\",         \"primary_state\": \"validated\"       },       \"n8n_template\": {         \"node_type\": \"n8n-nodes-base.postgres\",         \"operation\": \"executeQuery\",         \"default_parameters\": {           \"query\": \"UPDATE batch_log SET status = 'validated' WHERE batch_id = {{batch_id}};\"         },         \"output_mapping\": {           \"always_true\": \"validated\"         }       },       \"tags\": [\"set\", \"db\", \"status\"]     },      {       \"id\": \"batch_state.mark_requires_investigation\",       \"label\": \"Mark batch as requiring investigation\",       \"category\": \"batch_state\",       \"description\": \"Update the batch status to 'requires investigation' in the operational database.\",       \"io\": {         \"inputs\": [           {             \"name\": \"batch_id\",             \"kind\": \"state\",             \"type\": \"batch_id\",             \"required\": true,             \"description\": \"Identifier of the batch.\"           }         ],         \"outputs\": [           {             \"name\": \"requires_investigation\",             \"kind\": \"state\",             \"type\": \"boolean\",             \"state_name\": \"requires_investigation\",             \"description\": \"True if the batch was marked as requiring investigation.\"           }         ]       },       \"completion\": {         \"mode\": \"node_success\",         \"primary_state\": \"requires_investigation\"       },       \"n8n_template\": {         \"node_type\": \"n8n-nodes-base.postgres\",         \"operation\": \"executeQuery\",         \"default_parameters\": {           \"query\": \"UPDATE batch_log SET status = 'requires_investigation' WHERE batch_id = {{batch_id}};\"         },         \"output_mapping\": {           \"always_true\": \"requires_investigation\"         }       },       \"tags\": [\"set\", \"db\", \"status\"]     },      {       \"id\": \"messaging.email_notification\",       \"label\": \"Send email notification\",       \"category\": \"messaging\",       \"description\": \"Send an informative email to an operator or stakeholder about the current batch state or anomalies.\",       \"io\": {         \"inputs\": [           {             \"name\": \"recipient_email\",             \"kind\": \"ontology_object\",             \"type\": \"email\",             \"required\": true,             \"description\": \"Email address of the recipient.\"           },           {             \"name\": \"subject\",             \"kind\": \"payload\",             \"type\": \"string\",             \"required\": true,             \"description\": \"Email subject.\"           },           {             \"name\": \"body\",             \"kind\": \"payload\",             \"type\": \"string\",             \"required\": true,             \"description\": \"Email body content.\"           }         ],         \"outputs\": [           {             \"name\": \"email_sent\",             \"kind\": \"state\",             \"type\": \"boolean\",             \"state_name\": \"email_sent\",             \"description\": \"True if the email was accepted by the SMTP/API service.\"           }         ]       },       \"completion\": {         \"mode\": \"node_success\",         \"primary_state\": \"email_sent\"       },       \"n8n_template\": {         \"node_type\": \"n8n-nodes-base.emailSend\",         \"operation\": \"send\",         \"default_parameters\": {           \"toEmail\": \"{{recipient_email}}\",           \"subject\": \"{{subject}}\",           \"text\": \"{{body}}\"         },         \"output_mapping\": {           \"always_true\": \"email_sent\"         }       },       \"tags\": [\"notify\", \"side_effect\"]     },      {       \"id\": \"human.manual_confirmation\",       \"label\": \"Human confirmation of batch status\",       \"category\": \"human\",       \"description\": \"Request a human operator to confirm the status of a batch via email or task system, and wait for their response.\",       \"io\": {         \"inputs\": [           {             \"name\": \"operator_id\",             \"kind\": \"ontology_object\",             \"type\": \"person\",             \"required\": true,             \"description\": \"Person responsible for confirming the batch.\"           },           {             \"name\": \"batch_id\",             \"kind\": \"state\",             \"type\": \"batch_id\",             \"required\": true,             \"description\": \"Batch identifier to be confirmed.\"           }         ],         \"outputs\": [           {             \"name\": \"validated\",             \"kind\": \"state\",             \"type\": \"boolean\",             \"state_name\": \"validated\",             \"description\": \"True if the operator confirmed the batch as validated.\"           },           {             \"name\": \"requires_investigation\",             \"kind\": \"state\",             \"type\": \"boolean\",             \"state_name\": \"requires_investigation\",             \"description\": \"True if the operator marked the batch as requiring investigation.\"           }         ]       },       \"completion\": {         \"mode\": \"external_poll\",         \"primary_state\": \"validated\"       },       \"n8n_template\": {         \"node_type\": \"n8n-nodes-base.httpRequest\",         \"operation\": \"POST\",         \"default_parameters\": {           \"url\": \"http://human-task-service/create_and_wait\",           \"jsonParameters\": true,           \"bodyParametersJson\": \"{{ { \\\"operator_id\\\": $json[\\\"operator_id\\\"], \\\"batch_id\\\": $json[\\\"batch_id\\\"] } }}\"         },         \"output_mapping\": {           \"json.validated\": \"validated\",           \"json.requires_investigation\": \"requires_investigation\"         }       },       \"tags\": [\"human\", \"approval\"]     },      {       \"id\": \"kb.resolve_ontology_object\",       \"label\": \"Resolve ontology object by title or id\",       \"category\": \"kb\",       \"description\": \"Look up an ontology object (such as a folder, person, or schema) by id or title from the knowledge base.\",       \"io\": {         \"inputs\": [           {             \"name\": \"object_ref\",             \"kind\": \"payload\",             \"type\": \"string\",             \"required\": true,             \"description\": \"Ontology id or title to resolve.\"           }         ],         \"outputs\": [           {             \"name\": \"ontology_object\",             \"kind\": \"payload\",             \"type\": \"json\",             \"description\": \"Full ontology object record retrieved from the knowledge base.\"           }         ]       },       \"completion\": {         \"mode\": \"node_success\"       },       \"n8n_template\": {         \"node_type\": \"n8n-nodes-base.httpRequest\",         \"operation\": \"POST\",         \"default_parameters\": {           \"url\": \"http://kb-service/kb/object/get\",           \"jsonParameters\": true,           \"bodyParametersJson\": \"{{ { \\\"id_or_title\\\": $json[\\\"object_ref\\\"] } }}\"         },         \"output_mapping\": {           \"json.object\": \"ontology_object\"         }       },       \"tags\": [\"get\", \"ontology\", \"kb\"]     },      {       \"id\": \"kb.check_permission\",       \"label\": \"Check if actor has permission\",       \"category\": \"kb\",       \"description\": \"Check whether a given actor (person or role) has a specific permission before proceeding with a step.\",       \"io\": {         \"inputs\": [           {             \"name\": \"actor_id\",             \"kind\": \"ontology_object\",             \"type\": \"person\",             \"required\": true,             \"description\": \"Person or role attempting to perform the step.\"           },           {             \"name\": \"permission\",             \"kind\": \"payload\",             \"type\": \"string\",             \"required\": true,             \"description\": \"Permission identifier to check.\"           }         ],         \"outputs\": [           {             \"name\": \"allowed\",             \"kind\": \"state\",             \"type\": \"boolean\",             \"state_name\": \"permission_allowed\",             \"description\": \"True if the actor possesses the requested permission.\"           }         ]       },       \"completion\": {         \"mode\": \"node_success\",         \"primary_state\": \"permission_allowed\"       },       \"n8n_template\": {         \"node_type\": \"n8n-nodes-base.httpRequest\",         \"operation\": \"POST\",         \"default_parameters\": {           \"url\": \"http://kb-service/kb/check_permission\",           \"jsonParameters\": true,           \"bodyParametersJson\": \"{{ { \\\"actor_id\\\": $json[\\\"actor_id\\\"], \\\"permission\\\": $json[\\\"permission\\\"] } }}\"         },         \"output_mapping\": {           \"json.allowed\": \"allowed\"         }       },       \"tags\": [\"get\", \"permission\", \"gate\"]     }   ] }\"",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        1488,
-        -880
-      ],
-      "id": "1242bd9f-7259-429f-8d7c-8016e43e163a",
-      "name": "Setup",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "jsCode": "// Get the raw content string from the LLM node\nconst content = $input.first().json.message.content || \"\";\n\n// Find first '{' and last '}'\nconst start = content.indexOf(\"{\");\nconst end = content.lastIndexOf(\"}\");\n\n// Basic safety check\nif (start === -1 || end === -1 || end <= start) {\n  throw new Error(\"Could not locate JSON object inside LLM output.\");\n}\n\n// Extract the substring containing only the JSON\nconst jsonText = content.slice(start, end + 1).trim();\n\nconsole.log(jsonText)\n// Try to parse it\nlet parsed;\ntry {\n  parsed = JSON.parse(jsonText);\n} catch (e) {\n  throw new Error(\n    \"JSON parsing failed: \" + e.message +\n    \"\\nExtracted snippet:\\n\" + jsonText.slice(0, 300)\n  );\n}\n\n// Return the parsed JSON object\nreturn [\n  {\n    json: parsed\n  }\n];\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        4736,
-        -1312
-      ],
-      "id": "d8b83eda-9a9e-4a20-862c-cf3d41557c86",
-      "name": "JSON Split Tasks",
-      "disabled": true,
-      "onError": "continueErrorOutput"
-    },
-    {
-      "parameters": {
-        "jsCode": "return $('JSON Split Tasks').first().json.steps.map((s, i) => ({\n  json: {\n    step: s,\n    step_index: i,\n    transitions: $('JSON Split Tasks').first().json.transitions\n  }\n}));\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        3696,
-        -896
-      ],
-      "id": "4b3c4944-0fe0-4f4a-b7a1-6c1df77254c2",
-      "name": "Explode Steps",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "options": {}
-      },
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 3,
-      "position": [
-        3984,
-        -896
-      ],
-      "id": "bb714ea7-cd5d-4fbb-bad1-a74b62e68446",
-      "name": "Loop Over Items",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "jsCode": "const items = $input.all();\n\nfor (const item of items) {\n  const j = item.json;\n  const content = j.message?.content || \"\";\n\n  const start = content.indexOf(\"{\");\n  const end = content.lastIndexOf(\"}\");\n\n  if (start === -1 || end === -1 || end <= start) {\n    throw new Error(\"No JSON object found in LLM message.content\");\n  }\n\n  const jsonText = content.slice(start, end + 1);\n\n  // OPTIONAL: validate it's valid JSON\n  JSON.parse(jsonText);\n\n  // overwrite the content with JUST the JSON\n  j.message.content = jsonText;\n\n  item.json = j;\n}\n\nreturn items;\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2320,
-        -1312
-      ],
-      "id": "358dae03-9629-4371-a81b-b768292d0aba",
-      "name": "LLM Clean",
-      "onError": "continueErrorOutput"
-    },
-    {
-      "parameters": {
-        "jsCode": "const items = $input.all();\n\nfor (const item of items) {\n  const j = item.json;\n  const content = j.message?.content || \"\";\n\n  const start = content.indexOf(\"{\");\n  const end = content.lastIndexOf(\"}\");\n\n  if (start === -1 || end === -1 || end <= start) {\n    throw new Error(\"No JSON object found in LLM message.content\");\n  }\n\n  const jsonText = content.slice(start, end + 1);\n\n  // OPTIONAL: validate it's valid JSON\n  JSON.parse(jsonText);\n\n  // overwrite the content with JUST the JSON\n  j.message.content = jsonText;\n\n  item.json = j;\n}\n\nreturn items;\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2752,
-        -1264
-      ],
-      "id": "dc8319d4-afef-4253-9209-48af72151de2",
-      "name": "LLM Clean1",
-      "disabled": true,
-      "onError": "continueErrorOutput"
-    },
-    {
-      "parameters": {
-        "jsCode": "const items = $input.all();\n\nfor (const item of items) {\n  const j = item.json;\n  const content = j.message?.content || \"\";\n\n  const start = content.indexOf(\"{\");\n  const end = content.lastIndexOf(\"}\");\n\n  if (start === -1 || end === -1 || end <= start) {\n    throw new Error(\"No JSON object found in LLM message.content\");\n  }\n\n  const jsonText = content.slice(start, end + 1);\n\n  // OPTIONAL: validate it's valid JSON\n  JSON.parse(jsonText);\n\n  // overwrite the content with JUST the JSON\n  j.message.content = jsonText;\n\n  item.json = j;\n}\n\nreturn items;\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        3472,
-        -1280
-      ],
-      "id": "af884037-e010-4414-b5c3-6c30d779d6c2",
-      "name": "LLM Clean2",
-      "disabled": true,
-      "onError": "continueErrorOutput"
-    },
-    {
-      "parameters": {
-        "jsCode": "const items = $input.all();\n\nfor (const item of items) {\n  const j = item.json;\n  const content = j.message?.content || \"\";\n\n  const start = content.indexOf(\"{\");\n  const end = content.lastIndexOf(\"}\");\n\n  if (start === -1 || end === -1 || end <= start) {\n    throw new Error(\"No JSON object found in LLM message.content\");\n  }\n\n  const jsonText = content.slice(start, end + 1);\n\n  // OPTIONAL: validate it's valid JSON\n  JSON.parse(jsonText);\n\n  // overwrite the content with JUST the JSON\n  j.message.content = jsonText;\n\n  item.json = j;\n}\n\nreturn items;\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        4544,
-        -1312
-      ],
-      "id": "1cb4e296-5b2b-4147-bed3-38891966aaa6",
-      "name": "LLM Clean3",
-      "disabled": true,
-      "onError": "continueErrorOutput"
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "42389661-7d31-4381-b299-0d365797537d",
-              "name": "clean_ontology",
-              "value": "={{ $json.message.content }}",
-              "type": "string"
-            },
-            {
-              "id": "26ce96e8-10d3-4cb0-b6a5-e92f0ca1605e",
-              "name": "",
-              "value": "",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        2944,
-        -1280
-      ],
-      "id": "9041193b-abe6-473f-8c54-02abc6b047de",
-      "name": "Set True Ontology",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "42389661-7d31-4381-b299-0d365797537d",
-              "name": "clean_rules",
-              "value": "={{ $json.message.content }}",
-              "type": "string"
-            },
-            {
-              "id": "26ce96e8-10d3-4cb0-b6a5-e92f0ca1605e",
-              "name": "",
-              "value": "",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        3664,
-        -1296
-      ],
-      "id": "b1633558-1466-436f-816f-c7ca40e60885",
-      "name": "Set True Rules",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json;\n\n  // Input may be [ { steps, transitions } ] or { steps, transitions }\n  const wf = Array.isArray(data) ? data[0] : data;\n\n  const steps = wf.steps || [];\n  const transitions = wf.transitions || [];\n\n  // ---- basic sets/maps ----\n  const stepIds = new Set(steps.map(s => s.id));\n  const incoming = {};\n  const outgoing = {};\n\n  for (const id of stepIds) {\n    incoming[id] = 0;\n    outgoing[id] = 0;\n  }\n\n  const edgesWithMissingSteps = [];\n\n  for (const t of transitions) {\n    const { source_step_id, target_step_id } = t;\n\n    if (!stepIds.has(source_step_id) || !stepIds.has(target_step_id)) {\n      edgesWithMissingSteps.push(t);\n    }\n\n    if (stepIds.has(source_step_id)) {\n      outgoing[source_step_id] = (outgoing[source_step_id] || 0) + 1;\n    }\n    if (stepIds.has(target_step_id)) {\n      incoming[target_step_id] = (incoming[target_step_id] || 0) + 1;\n    }\n  }\n\n  // ---- starts & ends ----\n  const startSteps = [...stepIds].filter(id => (incoming[id] || 0) === 0);\n  const endSteps = [...stepIds].filter(id => (outgoing[id] || 0) === 0);\n\n  // ---- reachability from all starts ----\n  const visited = new Set();\n  const queue = [...startSteps];\n\n  while (queue.length > 0) {\n    const current = queue.shift();\n    if (visited.has(current)) continue;\n    visited.add(current);\n\n    for (const t of transitions) {\n      if (t.source_step_id === current && stepIds.has(t.target_step_id)) {\n        if (!visited.has(t.target_step_id)) {\n          queue.push(t.target_step_id);\n        }\n      }\n    }\n  }\n\n  const unreachableSteps = [...stepIds].filter(id => !visited.has(id));\n\n  // ---- cycle check (Kahn’s algorithm) ----\n  const indegree = {};\n  for (const id of stepIds) indegree[id] = 0;\n\n  for (const t of transitions) {\n    if (stepIds.has(t.target_step_id)) {\n      indegree[t.target_step_id] = (indegree[t.target_step_id] || 0) + 1;\n    }\n  }\n\n  const zeroIn = [];\n  for (const id of stepIds) {\n    if ((indegree[id] || 0) === 0) zeroIn.push(id);\n  }\n\n  let processedCount = 0;\n  const indegreeCopy = { ...indegree };\n  const q2 = [...zeroIn];\n\n  while (q2.length > 0) {\n    const nodeId = q2.shift();\n    processedCount++;\n\n    for (const t of transitions) {\n      if (t.source_step_id === nodeId && stepIds.has(t.target_step_id)) {\n        indegreeCopy[t.target_step_id]--;\n        if (indegreeCopy[t.target_step_id] === 0) {\n          q2.push(t.target_step_id);\n        }\n      }\n    }\n  }\n\n  const hasCycle = processedCount < stepIds.size;\n\n  // ---- outcome vs transitions consistency ----\n  const outcomeIssues = [];\n\n  // helper: map stepId -> step\n  const stepById = {};\n  for (const s of steps) stepById[s.id] = s;\n\n  // 1) Every transition with outcome_name should match a possible_outcome on its source\n  for (const t of transitions) {\n    if (!t.outcome_name) continue;\n    const srcStep = stepById[t.source_step_id];\n    if (!srcStep) continue;\n\n    const poss = srcStep.possible_outcomes || [];\n    const match = poss.some(o => o && o.name === t.outcome_name);\n\n    if (!match) {\n      outcomeIssues.push({\n        type: \"transition_outcome_not_defined_on_source_step\",\n        source_step_id: t.source_step_id,\n        target_step_id: t.target_step_id,\n        outcome_name: t.outcome_name,\n        description: `Transition outcome_name '${t.outcome_name}' is not listed in possible_outcomes of step '${t.source_step_id}'.`\n      });\n    }\n  }\n\n  // 2) Every terminal outcome should either:\n  //    - correspond to some transition outcome_name, or\n  //    - belong to an end step (no outgoing transitions)\n  for (const s of steps) {\n    const poss = s.possible_outcomes || [];\n    const outgoingForStep = transitions.filter(t => t.source_step_id === s.id);\n    const isEnd = outgoingForStep.length === 0;\n\n    for (const o of poss) {\n      if (!o || !o.name) continue;\n\n      const usedByTransition = outgoingForStep.some(t => t.outcome_name === o.name);\n\n      if (o.is_terminal && !usedByTransition && !isEnd) {\n        outcomeIssues.push({\n          type: \"terminal_outcome_not_routed\",\n          step_id: s.id,\n          outcome_name: o.name,\n          description: `Terminal outcome '${o.name}' on step '${s.id}' has no matching transition and the step still has outgoing edges.`\n        });\n      }\n    }\n  }\n\n  // ---- end steps: missing any terminal outcome? ----\n  const endStepsMissingTerminal = [];\n\n  for (const endId of endSteps) {\n    const step = stepById[endId];\n    if (!step) continue;\n\n    const outcomes = step.possible_outcomes || [];\n    const hasTerminal = outcomes.some(o => o && o.is_terminal === true);\n\n    if (!hasTerminal) {\n      endStepsMissingTerminal.push({\n        step_id: endId,\n        label: step.label,\n        reason: \"End step has no possible_outcome marked is_terminal=true\"\n      });\n    }\n  }\n\n  // ---- overall messages ----\n  const messages = [];\n\n  if (startSteps.length === 0) {\n    messages.push(\"No start steps detected (no steps without incoming transitions).\");\n  } else {\n    messages.push(`Start steps: ${startSteps.join(\", \")}`);\n  }\n\n  if (endSteps.length === 0) {\n    messages.push(\"No end steps detected (no steps without outgoing transitions).\");\n  } else {\n    messages.push(`End steps: ${endSteps.join(\", \")}`);\n  }\n\n  if (edgesWithMissingSteps.length > 0) {\n    messages.push(`Some transitions reference unknown steps (${edgesWithMissingSteps.length}).`);\n  }\n\n  if (unreachableSteps.length > 0) {\n    messages.push(`Unreachable steps from any start: ${unreachableSteps.join(\", \")}`);\n  }\n\n  if (endStepsMissingTerminal.length > 0) {\n    messages.push(\n      `End steps without terminal outcomes: ${endStepsMissingTerminal\n        .map(e => e.step_id)\n        .join(\", \")}`\n    );\n  }\n\n  if (outcomeIssues.length > 0) {\n    messages.push(`Outcome/transition inconsistencies detected (${outcomeIssues.length}).`);\n  }\n\n  if (hasCycle) {\n    messages.push(\"Cycle detected in the step graph (not a pure DAG).\");\n  }\n\n  if (\n    startSteps.length === 1 &&\n    endSteps.length >= 1 &&\n    edgesWithMissingSteps.length === 0 &&\n    unreachableSteps.length === 0 &&\n    endStepsMissingTerminal.length === 0 &&\n    outcomeIssues.length === 0 &&\n    !hasCycle\n  ) {\n    messages.push(\"Workflow looks structurally sane and traversable.\");\n  }\n\n  const sanityReport = {\n    is_traversable:\n      startSteps.length > 0 &&\n      edgesWithMissingSteps.length === 0 &&\n      unreachableSteps.length === 0,\n\n    has_cycle: hasCycle,\n\n    start_steps: startSteps,\n    end_steps: endSteps,\n\n    edges_with_missing_steps: edgesWithMissingSteps,\n    unreachable_steps: unreachableSteps,\n    end_steps_missing_terminal_outcome: endStepsMissingTerminal,\n    outcome_issues: outcomeIssues,\n\n    messages\n  };\n\n  results.push({ json: sanityReport });\n}\n\nreturn results;\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        5040,
-        -1184
-      ],
-      "id": "3dea1434-2b6d-4af5-bed8-3dae0e26ed35",
-      "name": "Sanity Check Report",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://localhost:11434/api/chat",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  model: \"llama3\",\n  stream: false,\n  format: \"json\",\n  temperature: 0,\n  messages: [\n    {\n      role: \"system\",\n      content:\n        \"Decompose ONE workflow step into 1 to 3 smaller ordered sub-tasks.\\n\" +\n        \"Each sub-task should be a single action that could be assigned to either a system or a human operator.\\n\" +\n        \"\\n\" +\n        \"You must output ONLY a JSON object with this shape:\\n\" +\n        \"{\\n\" +\n        \"  \\\"subtasks\\\": [\\n\" +\n        \"    { \\\"description\\\": string, \\\"kind\\\": \\\"system\\\" | \\\"human\\\" }\\n\" +\n        \"  ]\\n\" +\n        \"}\\n\" +\n        \"\\n\" +\n        \"Rules:\\n\" +\n        \"- Use kind = \\\"system\\\" if the action can reasonably be automated (database query, file check, run tool, send email, etc.).\\n\" +\n        \"- Use kind = \\\"human\\\" if it clearly involves human judgement or manual confirmation.\\n\" +\n        \"- Sub-tasks must be in execution order.\\n\" +\n        \"- No markdown, no explanations, JSON only.\"\n    },\n    {\n      role: \"user\",\n      content: JSON.stringify({\n        id: $job_id,\n        label: $json.job_label,\n        description: $json.job_description,\n        preconditions: $json.preconditions_text || [],\n        possible_outcomes: ($json.outcomes || []).map(o => o.name)\n      })\n    }\n  ]\n}) }}\n",
-        "options": {
-          "response": {
-            "response": {}
-          }
-        }
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        4912,
-        -880
-      ],
-      "id": "23ac976f-cbad-4e58-bf9d-a7ed08bbba0f",
-      "name": "Subskills Splitter",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "jsCode": "// Get the raw content string from the LLM node\nconst content = $input.first().json.message.content || \"\";\n\n// Find first '{' and last '}'\nconst start = content.indexOf(\"{\");\nconst end = content.lastIndexOf(\"}\");\n\n// Basic safety check\nif (start === -1 || end === -1 || end <= start) {\n  throw new Error(\"Could not locate JSON object inside LLM output.\");\n}\n\n// Extract the substring containing only the JSON\nconst jsonText = content.slice(start, end + 1).trim();\n\nconsole.log(jsonText)\n// Try to parse it\nlet parsed;\ntry {\n  parsed = JSON.parse(jsonText);\n} catch (e) {\n  throw new Error(\n    \"JSON parsing failed: \" + e.message +\n    \"\\nExtracted snippet:\\n\" + jsonText.slice(0, 300)\n  );\n}\n\n// Return the parsed JSON object\nreturn [\n  {\n    json: parsed\n  }\n];\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        5072,
-        -880
-      ],
-      "id": "615dd013-849f-466c-b94c-98a5be3f93c5",
-      "name": "JSON Split Subtasks",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "options": {}
-      },
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 3,
-      "position": [
-        4416,
-        -592
-      ],
-      "id": "74635aca-8851-4f5c-8bf5-835ddd101ac0",
-      "name": "Loop Over Subtasks",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "b178d190-ce5b-4540-9ee0-81c217dfc71b",
-              "name": "job_description",
-              "value": "={{ $json.step.description }}",
-              "type": "string"
-            },
-            {
-              "id": "008d2af5-3ed2-43f8-b3a7-e582d6ff9f4f",
-              "name": "job_id",
-              "value": "={{ $json.step.id }}",
-              "type": "string"
-            },
-            {
-              "id": "4bb73e76-2368-47d3-ad0c-9b4419111336",
-              "name": "job_label",
-              "value": "={{ $json.step.label }}",
-              "type": "string"
-            },
-            {
-              "id": "c827f984-688c-435b-879c-16196dc5f83d",
-              "name": "preconditions_text",
-              "value": "={{ $json.step.preconditions_text }}",
-              "type": "string"
-            },
-            {
-              "id": "f19418dc-4f21-495d-9f04-1418d26081f9",
-              "name": "ouctomes",
-              "value": "={{ $json.step.possible_outcomes }}",
-              "type": "array"
-            },
-            {
-              "id": "f08784e1-1fa5-4975-a268-ac9598b95961",
-              "name": "relations",
-              "value": "={{ $json.transitions }}",
-              "type": "array"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        4224,
-        -880
-      ],
-      "id": "6eb0818e-1f1e-4c67-a9a3-446bc347f52c",
-      "name": "Edit Fields",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://localhost:8011/task-update",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{\n{ \"task_id\": $json.job_id,\n\"description\": $json.job_description,\n\"label\": $json.job_label\n}\n}}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        4432,
-        -880
-      ],
-      "id": "d3f34141-36c0-44a1-a6a1-aaeff2de97dd",
-      "name": "Task Feedback",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://localhost:8011/subtask-update",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  substep_index: $('Loop Over Subtasks').item.json.step_index,\n  description: $('Loop Over Subtasks').item.json.step.description,\n  bladerunner_index: $('Loop Over Subtasks').item.json.step.kind,\n  skill: $json.message.content\n}) }}\n",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        5024,
-        -592
-      ],
-      "id": "d4103f2c-965f-4070-8153-f133deaafe07",
-      "name": "Subtask Feedback",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://localhost:8011/relations",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ {'links': $('Edit Fields').item.json.relations} }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        5520,
-        -1040
-      ],
-      "id": "3c4858df-d79c-4fa7-aa03-f8efc7ffb721",
-      "name": "Return Relations",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://localhost:8011/ontology-update",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{JSON.parse($json.clean_ontology )}}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        3104,
-        -1280
-      ],
-      "id": "1f97788b-23bc-4730-869f-fed916d5d903",
-      "name": "Upload Ontology",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://localhost:8011/rules-update",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{\n    JSON.parse($json.clean_rules)\n}}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        3920,
-        -1296
-      ],
-      "id": "78603de9-4b56-4379-8b14-c8a260ad55f5",
-      "name": "Upload Rules",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "url": "http://localhost:8011/skills",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        4688,
-        -880
-      ],
-      "id": "3034081c-b5b3-4dca-ae4d-3b51c9c20cef",
-      "name": "Fetch Skills",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://localhost:11434/api/chat",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  model: \"llama3\",\n  messages: [\n    {\n      role: \"system\",\n      content:\n        \"You are an ontology extraction engine for industrial workflows.\\n\" +\n        \"You will receive up to three documents, clearly separated:\\n\" +\n        \"[WORKFLOW_SPEC]  - narrative description of the workflow\\n\" +\n        \"[WPS]            - formal Procedure Specification (if provided)\\n\" +\n        \"[DATASHEET]      - object datasheet(s) (if provided)\\n\\n\" +\n        \"From these, identify domain objects, processes, properties, and events.\\n\" +\n        \"Treat WORKFLOW_SPEC as the primary narrative.\\n\" +\n        \"Use WPS and DATASHEET only to add or clarify objects and processes, \" +\n        \"not to invent unrelated structures.\\n\\n\" +\n        \"Output STRICT JSON with keys: objects, processes, properties, events.\\n\" +\n        \"Do not include any other keys or free text.\"\n    },\n    {\n      role: \"user\",\n      content:\n        \"[WORKFLOW_SPEC]\\n\" +\n        $node[\"Webhook\"].json.body.spec_text + \"\\n\\n\" +\n\n        \"[WPS]\\n\" +\n        ($node[\"Webhook\"].json.body.wps_text || \"NOT PROVIDED\") + \"\\n\\n\" +\n\n        \"[DATASHEET]\\n\" +\n        ($node[\"Webhook\"].json.body.datasheet_text || \"NOT PROVIDED\")\n    }\n  ],\n  stream: false\n}) }}\n",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        2016,
-        -1312
-      ],
-      "id": "b5088c10-c16f-42d1-a106-01e966944886",
-      "name": "Extract Objects"
-    },
-    {
-      "parameters": {
-        "url": "http://localhost:8011/reference-ontology",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        1808,
-        -1312
-      ],
-      "id": "385e4f77-8d6f-41fc-baa5-dc7c87ac4f2c",
-      "name": "Fetch Reference Ontology",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "jsCode": "return $('JSON Split Subtasks').first().json.subtasks.map((s, i) => ({\n  json: {\n    step: s,\n    step_index: i}\n}));\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        5232,
-        -880
-      ],
-      "id": "65c639a7-42ab-445a-a5e9-e051b9a1efba",
-      "name": "Explode Subtasks",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "source": "parameter",
-        "workflowJson": "={{ {\"Skills\": $('Fetch Skills').item.json.skills\n}}}\n\n\n",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.3,
-      "position": [
-        5392,
-        -880
-      ],
-      "id": "98d150fb-b6fe-4118-92a1-d59389c3c37f",
-      "name": "SubTaskCaller",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "source": "parameter",
-        "workflowJson": "=\n\n\n",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.3,
-      "position": [
-        4160,
-        -592
-      ],
-      "id": "a35895e6-287b-42f3-a62e-dd5af3428fa4",
-      "name": "SubTaskWF",
-      "disabled": true
-    },
-    {
-      "parameters": {
         "workflowId": {
           "__rl": true,
           "value": "vlJlmNoBNXlsGGvp",
@@ -703,8 +78,8 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        -1664,
-        -2080
+        -1648,
+        -2144
       ],
       "id": "192c6eb4-5f40-457d-8c86-71863995205e",
       "name": "Execute Subtasks Sub-workflow"
@@ -739,7 +114,7 @@
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
       "position": [
-        -3376,
+        -3312,
         -1616
       ],
       "id": "9732a4cf-fddc-435f-9c15-143174e740f8",
@@ -751,7 +126,7 @@
         "url": "http://localhost:11434/api/chat",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  model: \"llama3\",\n  stream: false,\n  format: \"json\",\n  temperature: 0,\n  messages: [\n    {\n      role: \"system\",\n      content:\n        \"Decompose ONE workflow step into 1 to 3 smaller ordered sub-tasks.\\n\" +\n        \"Each sub-task should be a single action that could be assigned to either a system or a human operator.\\n\" +\n        \"\\n\" +\n        \"You must output ONLY a JSON object with this shape:\\n\" +\n        \"{\\n\" +\n        \"  \\\"subtasks\\\": [\\n\" +\n        \"    { \\\"description\\\": string, \\\"kind\\\": \\\"system\\\" | \\\"human\\\" }\\n\" +\n        \"  ]\\n\" +\n        \"}\\n\" +\n        \"\\n\" +\n        \"Rules:\\n\" +\n        \"- Use kind = \\\"system\\\" if the action can reasonably be automated (database query, file check, run tool, send email, etc.).\\n\" +\n        \"- Use kind = \\\"human\\\" if it clearly involves human judgement or manual confirmation.\\n\" +\n        \"- Sub-tasks must be in execution order.\\n\" +\n        \"- No markdown, no explanations, JSON only.\"\n    },\n    {\n      role: \"user\",\n      content: JSON.stringify({\n        id: $('SUB-WORKFLOW: Trigger').item.json.job_id,\n        label: $('SUB-WORKFLOW: Trigger').item.json.job_label,\n        description: $('SUB-WORKFLOW: Trigger').item.json.job_description,\n        preconditions: $('SUB-WORKFLOW: Trigger').item.json.preconditions_text || [],\n        possible_outcomes: ($('SUB-WORKFLOW: Trigger').item.json.ouctomes || []).map(o => o.name)\n      })\n    }\n  ]\n}) }}\n",
+        "jsonBody": "={{ JSON.stringify({\n  model: \"llama3\",\n  stream: false,\n  format: \"json\",\n  temperature: 0,\n  messages: [\n    {\n  role: \"system\",\n  content:\n    \"Decompose ONE workflow step into 1 to 3 smaller ordered sub-tasks.\\n\" +\n    \"Each sub-task should be a single action that could be assigned to either a system or a human operator.\\n\" +\n    \"\\n\" +\n    \"You must output ONLY a JSON object with this shape:\\n\" +\n    \"{\\n\" +\n    \"  \\\"subtasks\\\": [\\n\" +\n    \"    { \\n\" +\n    \"      \\\"description\\\": string,\\n\" +\n    \"      \\\"kind\\\": \\\"system\\\" | \\\"human\\\",\\n\" +\n    \"      \\\"is_decision_point\\\": boolean,  // NEW: true if this subtask requires conditional logic\\n\" +\n    \"      \\\"decision_criteria\\\": string,    // NEW: describe what determines pass/fail\\n\" +\n    \"      \\\"pass_condition\\\": string,       // NEW: what constitutes success\\n\" +\n    \"      \\\"fail_action\\\": string           // NEW: what to do on failure (e.g., \\\"notify_manager\\\")\\n\" +\n    \"    }\\n\" +\n    \"  ]\\n\" +\n    \"}\\n\" +\n    \"\\n\" +\n    \"Rules:\\n\" +\n    \"- Use kind = \\\"system\\\" if the action can reasonably be automated.\\n\" +\n    \"- Use kind = \\\"human\\\" if it clearly involves human judgement.\\n\" +\n    \"- Set is_decision_point = true if the subtask's outcome determines whether to continue or abort.\\n\" +\n    \"- For decision points, specify:\\n\" +\n    \"  * decision_criteria: What is being checked (e.g., 'file validation', 'permission check')\\n\" +\n    \"  * pass_condition: When to continue (e.g., 'all files valid', 'user has permission')\\n\" +\n    \"  * fail_action: What to do on failure (typically 'notify_manager' or 'report_to_server')\\n\" +\n    \"- Sub-tasks must be in execution order.\\n\" +\n    \"- No markdown, no explanations, JSON only.\"\n},\n    {\n      role: \"user\",\n      content: JSON.stringify({\n        id: $('SUB-WORKFLOW: Trigger').item.json.job_id,\n        label: $('SUB-WORKFLOW: Trigger').item.json.job_label,\n        description: $('SUB-WORKFLOW: Trigger').item.json.job_description,\n        preconditions: $('SUB-WORKFLOW: Trigger').item.json.preconditions_text || [],\n        possible_outcomes: ($('SUB-WORKFLOW: Trigger').item.json.ouctomes || []).map(o => o.name)\n      })\n    }\n  ]\n}) }}\n",
         "options": {
           "response": {
             "response": {}
@@ -761,7 +136,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        -3152,
+        -3088,
         -1616
       ],
       "id": "a1d58b86-a0d8-4566-af14-a585a855df53",
@@ -774,7 +149,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2944,
+        -2880,
         -1616
       ],
       "id": "5812e400-b4a6-4476-bb5d-693e4c27e715",
@@ -787,7 +162,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2720,
+        -2656,
         -1616
       ],
       "id": "40515b2a-b395-472d-9c4a-d80b1e667915",
@@ -800,7 +175,7 @@
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        -2496,
+        -2432,
         -1616
       ],
       "id": "34616671-92e3-47fc-bbed-4f8de5b73fbb",
@@ -818,8 +193,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        -2272,
-        -1616
+        -2064,
+        -1600
       ],
       "id": "5e2ae372-76e8-4b97-8a87-c31625582a23",
       "name": "SUB: Extract Tasks"
@@ -830,14 +205,14 @@
         "url": "http://localhost:8011/subtask-update",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  substep_index: $('SUB: Loop Over Subtasks').item.json.step_index,\n  description: $('SUB: Loop Over Subtasks').item.json.step.description,\n  bladerunner_index: $('SUB: Loop Over Subtasks').item.json.step.kind,\n  skill: $json.message.content\n}) }}\n",
+        "jsonBody": "={{ JSON.stringify({\n  substep_index: $('SUB: Loop Over Subtasks').item.json.step_index,\n  description: $('SUB: Loop Over Subtasks').item.json.step.description,\n  bladerunner_index: $('SUB: Loop Over Subtasks').item.json.step.kind,\n  skill: $json.message.content,\n  decision_node : $('Decision Point Code').item.json.is_decision_point\n}) }}\n",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        -2064,
-        -1616
+        -1824,
+        -1600
       ],
       "id": "5f7118ef-77ef-499b-b270-233cbd679d06",
       "name": "SUB: Subtask Feedback"
@@ -845,14 +220,15 @@
     {
       "parameters": {
         "content": "## SUB-WORKFLOW: Process Subtasks\n\nThis section handles the inner loop that was causing nesting issues.\nDoes essentially what the above does, but links it to specific tools your <implementation method>, be it n8n or other, is loaded to handle.\n",
-        "height": 280,
-        "width": 440
+        "height": 424,
+        "width": 1768,
+        "color": 5
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -3456,
-        -1872
+        -3392,
+        -1808
       ],
       "id": "3e9fc1e4-7e41-4dde-818e-9b602bb60939",
       "name": "Sticky Note"
@@ -860,14 +236,15 @@
     {
       "parameters": {
         "content": "## MAIN WORKFLOW\n\nNote: The \"Execute Subtasks Sub-workflow\" node calls the sub-workflow below. \nNecessary due to iffy behaviour when nesting loops. All data feeds back to Python through http calls.\n\nDissects:\n1. The ontology, \n2. The rules of the ontology,\n3. Tasks within the workflow, related to the ontology,\n4. These are passed on to another workflow (below) that handles the problems have when facing computers for the first time: thinking many tasks is just one ('Get to the store. Should be an easy instruction for a car.' - Elon Musk)\n",
-        "height": 308,
-        "width": 748
+        "height": 1108,
+        "width": 3644,
+        "color": 4
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -3456,
-        -2960
+        -3392,
+        -2944
       ],
       "id": "7f50d01c-c9d7-48d5-a67c-2461fe8479a1",
       "name": "Sticky Note1"
@@ -939,7 +316,7 @@
       "typeVersion": 4.3,
       "position": [
         -656,
-        -2560
+        -2544
       ],
       "id": "cd1b9ea2-871f-42d4-907a-6dc750787b05",
       "name": "Task Partition1"
@@ -1004,7 +381,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -112,
+        -240,
         -2560
       ],
       "id": "f73ae8eb-61b9-4eb4-a111-b748abc49049",
@@ -1018,8 +395,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2816,
-        -2096
+        -2672,
+        -2160
       ],
       "id": "d832e09a-9a5a-485f-9322-6e3296f82fad",
       "name": "Explode Steps1"
@@ -1031,8 +408,8 @@
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        -2528,
-        -2096
+        -2480,
+        -2160
       ],
       "id": "1019b4a8-30ab-448c-aedf-081827d74f8e",
       "name": "Loop Over Items1"
@@ -1086,8 +463,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -304,
-        -2560
+        -480,
+        -2544
       ],
       "id": "c5efc763-074c-4c6e-a2d6-ddf530a2ece2",
       "name": "LLM Clean7",
@@ -1146,8 +523,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        192,
-        -2432
+        80,
+        -2496
       ],
       "id": "8f37fdb3-df16-48f4-ad36-5b02c74a06a6",
       "name": "Sanity Check Report1"
@@ -1199,8 +576,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -2288,
-        -2080
+        -2272,
+        -2144
       ],
       "id": "afdc4713-4ae4-49ef-b9f3-29d1a1dd59fe",
       "name": "Edit Fields1"
@@ -1217,8 +594,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        -2080,
-        -2080
+        -2064,
+        -2144
       ],
       "id": "5053c406-66eb-4341-9ca1-ec1827dc5b74",
       "name": "Task Feedback1"
@@ -1235,8 +612,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        -2304,
-        -2224
+        -2272,
+        -2288
       ],
       "id": "616a8a34-8dd5-43bf-a278-86475797d088",
       "name": "Return Relations1"
@@ -1272,7 +649,7 @@
       "typeVersion": 4.3,
       "position": [
         -944,
-        -2640
+        -2544
       ],
       "id": "60d6de47-8816-49aa-847e-7a76514a0517",
       "name": "Upload Rules1"
@@ -1317,388 +694,43 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        -1872,
-        -2080
+        -1856,
+        -2144
       ],
       "id": "581454a7-14ab-4175-be84-a65abdd7e3cf",
       "name": "Fetch Skills1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: SUB: Check if Decision Point\nconst subtask = $input.first().json.step;\nconst isDecisionPoint = subtask.is_decision_point === true;\n\nreturn [{\n  json: {\n    ...subtask,\n    is_decision_point: isDecisionPoint,\n    decision_criteria: subtask.decision_criteria || null,\n    pass_condition: subtask.pass_condition || null,\n    fail_action: subtask.fail_action || 'notify_manager'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2224,
+        -1600
+      ],
+      "id": "78727b56-07a7-4076-9e08-a874e4e3dc18",
+      "name": "Decision Point Code"
+    },
+    {
+      "parameters": {
+        "content": "## LLM  + Cleaning nodes\nWe want to make sure the LLM puts out a valid JSON schema, potentially bracketed by usual LLM waffle.\nClean waffle, check it's a valid JSON format, give it a second/third/... go if it isn't. LLama3 is generally capable - needs only 2 rounds max.",
+        "height": 480,
+        "width": 400
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1616,
+        -2768
+      ],
+      "typeVersion": 1,
+      "id": "c2c86a68-7c50-4951-8e01-651fac8e9f56",
+      "name": "Sticky Note2"
     }
   ],
   "pinData": {},
   "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Setup",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Ontology Normalisation": {
-      "main": [
-        [
-          {
-            "node": "LLM Clean1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Extract Tasks": {
-      "main": [
-        [
-          {
-            "node": "Subtask Feedback",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Extract Rules": {
-      "main": [
-        [
-          {
-            "node": "LLM Clean2",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Task Partition": {
-      "main": [
-        [
-          {
-            "node": "LLM Clean3",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Setup": {
-      "main": [
-        [
-          {
-            "node": "Fetch Reference Ontology",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "JSON Split Tasks": {
-      "main": [
-        [
-          {
-            "node": "Sanity Check Report",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Task Partition",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Explode Steps": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Items",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Loop Over Items": {
-      "main": [
-        [
-          {
-            "node": "Return Relations",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Edit Fields",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "LLM Clean": {
-      "main": [
-        [
-          {
-            "node": "Ontology Normalisation",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Extract Objects",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "LLM Clean1": {
-      "main": [
-        [
-          {
-            "node": "Set True Ontology",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "LLM Clean",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "LLM Clean2": {
-      "main": [
-        [
-          {
-            "node": "Set True Rules",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Extract Rules",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "LLM Clean3": {
-      "main": [
-        [
-          {
-            "node": "JSON Split Tasks",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Task Partition",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Set True Ontology": {
-      "main": [
-        [
-          {
-            "node": "Upload Ontology",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Set True Rules": {
-      "main": [
-        [
-          {
-            "node": "Upload Rules",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Sanity Check Report": {
-      "main": [
-        [
-          {
-            "node": "Explode Steps",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Subskills Splitter": {
-      "main": [
-        [
-          {
-            "node": "JSON Split Subtasks",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "JSON Split Subtasks": {
-      "main": [
-        [
-          {
-            "node": "Explode Subtasks",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Loop Over Subtasks": {
-      "main": [
-        [],
-        [
-          {
-            "node": "Extract Tasks",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Edit Fields": {
-      "main": [
-        [
-          {
-            "node": "Task Feedback",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Task Feedback": {
-      "main": [
-        [
-          {
-            "node": "Fetch Skills",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Subtask Feedback": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Subtasks",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upload Ontology": {
-      "main": [
-        [
-          {
-            "node": "Extract Rules",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upload Rules": {
-      "main": [
-        [
-          {
-            "node": "Task Partition",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch Skills": {
-      "main": [
-        [
-          {
-            "node": "Subskills Splitter",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Extract Objects": {
-      "main": [
-        [
-          {
-            "node": "LLM Clean",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch Reference Ontology": {
-      "main": [
-        [
-          {
-            "node": "Extract Objects",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Explode Subtasks": {
-      "main": [
-        [
-          {
-            "node": "SubTaskCaller",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "SubTaskCaller": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Items",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "SubTaskWF": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Subtasks",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Execute Subtasks Sub-workflow": {
       "main": [
         [
@@ -1759,7 +791,7 @@
         [],
         [
           {
-            "node": "SUB: Extract Tasks",
+            "node": "Decision Point Code",
             "type": "main",
             "index": 0
           }
@@ -2071,6 +1103,17 @@
           }
         ]
       ]
+    },
+    "Decision Point Code": {
+      "main": [
+        [
+          {
+            "node": "SUB: Extract Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -2081,7 +1124,7 @@
     "availableInMCP": false,
     "errorWorkflow": "vlJlmNoBNXlsGGvp"
   },
-  "versionId": "5a4353a6-c906-4091-b3ca-9d5ac4cde436",
+  "versionId": "3a9f0e15-d269-4468-a18d-39b8144e2a4e",
   "meta": {
     "instanceId": "d0b08ddea45ec199cb9cdc5a6db0b4b6e526d25a1fe4388cf11c3840b75c3662"
   },

@@ -516,6 +516,15 @@
                     </div>
                 </div>
 
+                <div id="actions-section" style="display: none; margin-top: 1rem;">
+                    <button id="build-workflow-btn" style="background: #1f6feb; margin-bottom: 0.5rem;">
+                        Build Workflow
+                    </button>
+                    <button id="export-state-btn" style="background: #6e7681;">
+                        Export State JSON
+                    </button>
+                </div>
+
                 <h2 style="margin-top: 2rem;">Event Log</h2>
                 <div class="log-container" id="log-container"></div>
             </div>
@@ -547,7 +556,7 @@
 
             <!-- Right Panel: Ontology & Rules -->
             <div class="panel">
-                <h2>🧬 Ontology & Rules</h2>
+                <h2>Ontology & Rules</h2>
 
                 <div class="stats-row" id="ontology-stats" style="display: none;">
                     <div class="stat-box">
@@ -593,6 +602,9 @@
         const statusText = document.getElementById('status-text');
         const jobIdEl = document.getElementById('job-id');
         const submitBtn = document.getElementById('submit-btn');
+        const actionsSection = document.getElementById('actions-section');
+        const buildWorkflowBtn = document.getElementById('build-workflow-btn');
+        const exportStateBtn = document.getElementById('export-state-btn');
         const logContainer = document.getElementById('log-container');
         const canvasEmptyState = document.getElementById('canvas-empty-state');
         const ontologyContainer = document.getElementById('ontology-container');
@@ -974,6 +986,7 @@
                 case 'job_complete':
                     log('Analysis complete!', 'success');
                     setStatus('✓ Complete', 'success');
+                    actionsSection.style.display = 'block';
                     submitBtn.disabled = false;
                     break;
 
@@ -1004,32 +1017,42 @@
         function renderOntology() {
             if (!ontology && (!rules || rules.length === 0)) return;
 
+            const safeList = (arr) => Array.isArray(arr) ? arr : [];
             let html = '';
 
-            // Objects section
-            if (ontology && ontology.objects && ontology.objects.length > 0) {
+            // ---------- Objects ----------
+            const objects = ontology ? safeList(ontology.objects) : [];
+            if (objects.length > 0) {
                 html += '<div class="ontology-section">';
-                html += '<h3 onclick="toggleSection(this)">📦 Objects</h3>';
+                html += '<h3 onclick="toggleSection(this)">Objects</h3>';
                 html += '<div class="ontology-content">';
 
-                ontology.objects.forEach(obj => {
+                objects.forEach(obj => {
                     if (typeof obj === 'string') {
                         html += `<div class="ontology-item">
-                            <div class="ontology-item-header">${escapeHtml(obj)}</div>
-                        </div>`;
-                    } else if (obj && obj.id) {
-                        html += `<div class="ontology-item">
-                            <div class="ontology-item-header">${escapeHtml(obj.label || obj.id)}</div>
-                            <div class="ontology-item-id">${escapeHtml(obj.id)}</div>`;
+                    <div class="ontology-item-header">${escapeHtml(obj)}</div>
+                </div>`;
+                    } else if (obj && typeof obj === 'object') {
+                        const label = obj.label || obj.name || obj.id || '(unnamed object)';
+                        const id = obj.id || obj.name || '';
+                        const kind = obj.kind;
+                        const tags = safeList(obj.tags);
 
-                        if (obj.kind) {
-                            html += `<div class="ontology-item-detail">Kind: <strong>${escapeHtml(obj.kind)}</strong></div>`;
+                        html += `<div class="ontology-item">
+                    <div class="ontology-item-header">${escapeHtml(label)}</div>`;
+
+                        if (id) {
+                            html += `<div class="ontology-item-id">${escapeHtml(id)}</div>`;
                         }
 
-                        if (obj.tags && obj.tags.length > 0) {
+                        if (kind) {
+                            html += `<div class="ontology-item-detail">Kind: <strong>${escapeHtml(kind)}</strong></div>`;
+                        }
+
+                        if (tags.length > 0) {
                             html += '<div class="ontology-item-detail">';
-                            obj.tags.forEach(tag => {
-                                html += `<span class="ontology-tag">${escapeHtml(tag)}</span>`;
+                            tags.forEach(tag => {
+                                html += `<span class="ontology-tag">${escapeHtml(String(tag))}</span>`;
                             });
                             html += '</div>';
                         }
@@ -1041,30 +1064,35 @@
                 html += '</div></div>';
             }
 
-            // Processes section
-            if (ontology && ontology.processes && ontology.processes.length > 0) {
+            // ---------- Processes ----------
+            const processes = ontology ? safeList(ontology.processes) : [];
+            if (processes.length > 0) {
                 html += '<div class="ontology-section">';
-                html += '<h3 onclick="toggleSection(this)">⚙️ Processes</h3>';
+                html += '<h3 onclick="toggleSection(this)">Processes</h3>';
                 html += '<div class="ontology-content">';
 
-                ontology.processes.forEach(proc => {
+                processes.forEach(proc => {
                     if (typeof proc === 'string') {
                         html += `<div class="ontology-item">
-                            <div class="ontology-item-header">${escapeHtml(proc)}</div>
-                        </div>`;
-                    } else if (proc && proc.id) {
-                        html += `<div class="ontology-item">
-                            <div class="ontology-item-header">${escapeHtml(proc.label || proc.id)}</div>
-                            <div class="ontology-item-id">${escapeHtml(proc.id)}</div>`;
+                    <div class="ontology-item-header">${escapeHtml(proc)}</div>
+                </div>`;
+                    } else if (proc && typeof proc === 'object') {
+                        const label = proc.label || proc.name || proc.id || '(unnamed process)';
+                        const id = proc.id || proc.name || '';
+                        const tags = safeList(proc.tags);
 
-                        if (proc.tags && proc.tags.length > 0) {
+                        html += `<div class="ontology-item">
+                    <div class="ontology-item-header">${escapeHtml(label)}</div>`;
+                        if (id) {
+                            html += `<div class="ontology-item-id">${escapeHtml(id)}</div>`;
+                        }
+                        if (tags.length > 0) {
                             html += '<div class="ontology-item-detail">';
-                            proc.tags.forEach(tag => {
-                                html += `<span class="ontology-tag">${escapeHtml(tag)}</span>`;
+                            tags.forEach(tag => {
+                                html += `<span class="ontology-tag">${escapeHtml(String(tag))}</span>`;
                             });
                             html += '</div>';
                         }
-
                         html += '</div>';
                     }
                 });
@@ -1072,22 +1100,30 @@
                 html += '</div></div>';
             }
 
-            // Properties section
-            if (ontology && ontology.properties && ontology.properties.length > 0) {
+            // ---------- Properties ----------
+            const properties = ontology ? safeList(ontology.properties) : [];
+            if (properties.length > 0) {
                 html += '<div class="ontology-section">';
-                html += '<h3 onclick="toggleSection(this)">🏷️ Properties</h3>';
+                html += '<h3 onclick="toggleSection(this)">Properties</h3>';
                 html += '<div class="ontology-content">';
 
-                ontology.properties.forEach(prop => {
+                properties.forEach(prop => {
                     if (typeof prop === 'string') {
                         html += `<span class="ontology-tag">${escapeHtml(prop)}</span>`;
-                    } else if (prop && prop.id) {
+                    } else if (prop && typeof prop === 'object') {
+                        const label = prop.label || prop.name || prop.id || '(unnamed property)';
+                        const id = prop.id || prop.name || '';
+                        const tags = safeList(prop.tags);
+
                         html += `<div class="ontology-item">
-                            <div class="ontology-item-header">${escapeHtml(prop.label || prop.id)}</div>`;
-                        if (prop.tags && prop.tags.length > 0) {
+                    <div class="ontology-item-header">${escapeHtml(label)}</div>`;
+                        if (id) {
+                            html += `<div class="ontology-item-id">${escapeHtml(id)}</div>`;
+                        }
+                        if (tags.length > 0) {
                             html += '<div class="ontology-item-detail">';
-                            prop.tags.forEach(tag => {
-                                html += `<span class="ontology-tag">${escapeHtml(tag)}</span>`;
+                            tags.forEach(tag => {
+                                html += `<span class="ontology-tag">${escapeHtml(String(tag))}</span>`;
                             });
                             html += '</div>';
                         }
@@ -1098,30 +1134,35 @@
                 html += '</div></div>';
             }
 
-            // Events section
-            if (ontology && ontology.events && ontology.events.length > 0) {
+            // ---------- Events ----------
+            const events = ontology ? safeList(ontology.events) : [];
+            if (events.length > 0) {
                 html += '<div class="ontology-section">';
-                html += '<h3 onclick="toggleSection(this)">⚡ Events</h3>';
+                html += '<h3 onclick="toggleSection(this)">Events</h3>';
                 html += '<div class="ontology-content">';
 
-                ontology.events.forEach(event => {
+                events.forEach(event => {
                     if (typeof event === 'string') {
                         html += `<div class="ontology-item">
-                            <div class="ontology-item-header">${escapeHtml(event)}</div>
-                        </div>`;
-                    } else if (event && event.id) {
-                        html += `<div class="ontology-item">
-                            <div class="ontology-item-header">${escapeHtml(event.label || event.id)}</div>
-                            <div class="ontology-item-id">${escapeHtml(event.id)}</div>`;
+                    <div class="ontology-item-header">${escapeHtml(event)}</div>
+                </div>`;
+                    } else if (event && typeof event === 'object') {
+                        const label = event.label || event.name || event.id || '(unnamed event)';
+                        const id = event.id || event.name || '';
+                        const tags = safeList(event.tags);
 
-                        if (event.tags && event.tags.length > 0) {
+                        html += `<div class="ontology-item">
+                    <div class="ontology-item-header">${escapeHtml(label)}</div>`;
+                        if (id) {
+                            html += `<div class="ontology-item-id">${escapeHtml(id)}</div>`;
+                        }
+                        if (tags.length > 0) {
                             html += '<div class="ontology-item-detail">';
-                            event.tags.forEach(tag => {
-                                html += `<span class="ontology-tag">${escapeHtml(tag)}</span>`;
+                            tags.forEach(tag => {
+                                html += `<span class="ontology-tag">${escapeHtml(String(tag))}</span>`;
                             });
                             html += '</div>';
                         }
-
                         html += '</div>';
                     }
                 });
@@ -1129,17 +1170,17 @@
                 html += '</div></div>';
             }
 
-            // Rules section
+            // ---------- Rules (unchanged) ----------
             if (rules && rules.length > 0) {
                 html += '<div class="ontology-section">';
-                html += '<h3 onclick="toggleSection(this)">📋 Rules</h3>';
+                html += '<h3 onclick="toggleSection(this)">Rules</h3>';
                 html += '<div class="ontology-content">';
 
                 rules.forEach(rule => {
                     const ruleType = rule.rule_type || 'unknown';
                     html += `<div class="rule-item ${ruleType}">
-                        <span class="rule-type-badge ${ruleType}">${ruleType.replace('_', ' ')}</span>
-                        <div class="rule-description">${escapeHtml(rule.description || '')}</div>`;
+                <span class="rule-type-badge ${ruleType}">${ruleType.replace('_', ' ')}</span>
+                <div class="rule-description">${escapeHtml(rule.description || '')}</div>`;
 
                     if (rule.applies_to && rule.applies_to.length > 0) {
                         html += `<div style="font-size: 0.8rem; color: #6e7681; font-style: italic; margin-top: 0.5rem;">Applies to: ${rule.applies_to.map(escapeHtml).join(', ')}</div>`;
@@ -1184,6 +1225,7 @@
             logContainer.innerHTML = '';
             ontologyContainer.innerHTML = '<div class="empty-state" style="position: static; transform: none; margin-top: 3rem;"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M11,16.5L6.5,12L7.91,10.59L11,13.67L16.59,8.09L18,9.5L11,16.5Z" /></svg><p>Ontology will appear after analysis</p></div>';
             ontologyStats.style.display = 'none';
+            actionsSection.style.display = 'none';
 
             submitBtn.disabled = true;
             setStatus('<span class="spinner"></span> Uploading...', 'processing');
@@ -1213,6 +1255,60 @@
                 log(`Failed: ${error.message}`, 'error');
                 setStatus(`✗ Failed`, 'error');
                 submitBtn.disabled = false;
+            }
+        });
+
+        // Build n8n workflow button
+        buildWorkflowBtn.addEventListener('click', async () => {
+            if (!currentJobId) return;
+
+            buildWorkflowBtn.disabled = true;
+            log('Building n8n workflow...', 'info');
+
+            try {
+                const response = await fetch(`/build-n8n-workflow/${currentJobId}`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                log(`Workflow built! Saved to: ${data.file}`, 'success');
+                alert(`n8n workflow generated!\n\nFile: ${data.file}\n\nYou can import this into n8n.`);
+
+            } catch (error) {
+                log(`Failed to build workflow: ${error.message}`, 'error');
+                alert(`Failed to build workflow: ${error.message}`);
+            } finally {
+                buildWorkflowBtn.disabled = false;
+            }
+        });
+
+        // Export state button
+        exportStateBtn.addEventListener('click', async () => {
+            if (!currentJobId) return;
+
+            exportStateBtn.disabled = true;
+            log('Exporting state...', 'info');
+
+            try {
+                const response = await fetch(`/export-state/${currentJobId}`);
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                log(`State exported! Saved to: ${data.file}`, 'success');
+                alert(`State exported!\n\nFile: ${data.file}`);
+
+            } catch (error) {
+                log(`Failed to export state: ${error.message}`, 'error');
+                alert(`Failed to export state: ${error.message}`);
+            } finally {
+                exportStateBtn.disabled = false;
             }
         });
     </script>
