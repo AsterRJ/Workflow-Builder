@@ -1,5 +1,9 @@
 # Workflow-Builder
 
+Turning worfklows into pipelines.
+
+<img width="1799" height="1040" alt="interfacewf" src="https://github.com/user-attachments/assets/661c4d39-d75a-4e1d-8d44-65352c489594" />
+
 
 
 # Workflow Builder
@@ -116,6 +120,10 @@ By default, Ollama exposes an HTTP API on `http://localhost:11434` which n8n use
 ---
 
 ### 4.2 Start n8n via Docker
+
+<img width="1464" height="634" alt="n8nwf" src="https://github.com/user-attachments/assets/296358ea-d58a-48a2-b24f-2f76deef31fe" />
+
+
 
 1. Open another terminal.
 
@@ -272,7 +280,7 @@ To adapt the system to a new domain:
 ## 7. Possible Extensions
 
 * Include training the local LLM of choice on your specific datatsets to ensure responses are structured in ways you may expect.
-* Add in a RAG setup to create an internal chat assistant based on previous knowledge.
+* Add in a RAG setup to provide rich information instead of pre-made json files retrieved from the backend.
 * Add authentication and multi-user support.
 * Add tests that call the n8n webhook and validate expected JSON structure.
 
