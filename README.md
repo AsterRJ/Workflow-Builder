@@ -279,6 +279,7 @@ To adapt the system to a new domain:
 
 ## 7. Possible Extensions
 
+* Thinking over it, using the perspective of lenses to define get/set for compilation functions individually could enhance the process significantly.
 * Include training the local LLM of choice on your specific datatsets to ensure responses are structured in ways you may expect.
 * Add in a RAG setup to provide rich information instead of pre-made json files retrieved from the backend.
 * Add authentication and multi-user support.
@@ -289,4 +290,11 @@ Definitely will be adding secondary nodes to critique responses from all LLM cal
 
 ## 8. Licence
 
-Add your preferred licence information here (for example MIT, Apache 2.0, or proprietary).
+MIT License
+
+
+## Remaining Questions
+
+- Using an embedding space to create cost functions used to optimise LLM prompts when handling deterministic outputs?
+- Implementing a genetic algorithm to determine optimal structures of the workflow. 
+
